@@ -1,0 +1,164 @@
+name: End-to-end
+
+# The slow checks: live screen capture and the end-to-end tests that drive
+# the real app. Run them by hand (Actions → End-to-end → Run workflow)
+# before a release; pushes only run the quick CI.
+on:
+  workflow_dispatch:
+
+jobs:
+  live-capture:
+    name: ${{ matrix.os }} live capture
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad gstreamer1.0-x gstreamer1.0-pipewire xvfb ffmpeg
+      - name: ffmpeg (for ffprobe checks)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - name: Live capture test (Windows Graphics Capture + Media Foundation)
+        if: runner.os == 'Windows'
+        run: cargo test -p rec-capture --test live -- --ignored --nocapture
+      - name: Live capture test (GStreamer on X11)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test -p rec-capture --test live -- --ignored --nocapture
+
+  macos-e2e:
+    # Drives the real app: shortcut, overlay, Esc, drag, Stop pill, clipboard,
+    # and checks the MP4 (size, length, pill not in the video).
+    name: macOS end-to-end (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri build --bundles app
+      - name: Build the test drivers
+        run: |
+          swiftc -O -o "$RUNNER_TEMP/rec-e2e" e2e/macos/RecE2E.swift
+          LIVE=$(cargo test -p rec-capture --test live --no-run --message-format=json | jq -r 'select(.executable != null) | .executable' | tail -1)
+          echo "LIVE_TEST=$LIVE" >> "$GITHUB_ENV"
+      - name: Grant permissions (CI runner only)
+        run: ./e2e/macos/grant-permissions.sh "$RUNNER_TEMP/rec-e2e" "$LIVE_TEST"
+      - name: Live capture test (ScreenCaptureKit + encoder)
+        run: '"$LIVE_TEST" --ignored --nocapture --test-threads=1'
+      - name: End-to-end test
+        # Not blocking: GitHub's macOS VMs drop synthetic mouse drags (the
+        # system doesn't even register the scripted button release), so the
+        # drag step can't pass there. Shortcut, overlay, Esc and the live
+        # capture test above do run and must pass.
+        continue-on-error: true
+        run: '"$RUNNER_TEMP/rec-e2e" "$PWD/target/release/bundle/macos/Rec.app"'
+      - name: Diagnostics
+        if: failure()
+        run: |
+          cat ~/Library/Logs/com.alexhem.rec/Rec.log || true
+          screencapture -x "$RUNNER_TEMP/screen.png" || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-${{ matrix.os }}
+          path: ${{ runner.temp }}/screen.png
+          if-no-files-found: ignore
+
+  linux-e2e:
+    name: Linux end-to-end (X11)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: System libraries and test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad gstreamer1.0-x xvfb xdotool xclip ffmpeg dbus-x11 x11-utils openbox
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri build --no-bundle
+      - name: End-to-end test
+        run: |
+          BIN=$(ls target/release/Rec target/release/rec 2>/dev/null | head -1)
+          export SHOT="$RUNNER_TEMP/screen.png"
+          xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- e2e/linux/run.sh "$PWD/$BIN"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-linux
+          path: ${{ runner.temp }}/screen.png
+          if-no-files-found: ignore
+
+  windows-e2e:
+    name: Windows end-to-end
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: ffmpeg (for ffprobe checks)
+        shell: pwsh
+        run: |
+          for ($i = 0; $i -lt 3; $i++) { choco install ffmpeg -y --no-progress; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep 10 }
+          Get-ChildItem C:\ProgramData\chocolatey\bin\ff*.exe
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri build --no-bundle
+      - name: End-to-end test
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem target\release\Rec.exe, target\release\rec.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          ./e2e/windows/run.ps1 -App $bin.FullName
+      - name: Screenshot on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $img = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($img).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $img.Save("$env:RUNNER_TEMP\screen.png")
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-windows
+          path: ${{ runner.temp }}/screen.png
+          if-no-files-found: ignore

@@ -50,6 +50,19 @@ pnpm tauri build --bundles app # Rec.app
 
 Run the full build and test suite before every commit.
 
+### Iterating
+
+- Iterate locally: `pnpm tauri build --debug --bundles app`, then
+  `swiftc -O -o /tmp/rec-e2e e2e/macos/RecE2E.swift && /tmp/rec-e2e
+  "$PWD/target/debug/bundle/macos/Rec.app"` drives the real app on this Mac
+  (needs Accessibility for the terminal and Screen Recording for Rec). It
+  takes over the mouse for about a minute.
+- Pushes run only the quick CI (`.github/workflows/ci.yml`). The live
+  capture and end-to-end tests on all three platforms
+  (`.github/workflows/e2e.yml`) run on demand: `gh workflow run e2e.yml`.
+  Run them before a release.
+- Release only when asked: push a `vX.Y.Z` tag.
+
 ## Gotchas
 
 - Screen capture needs Screen Recording permission for the *responsible*
