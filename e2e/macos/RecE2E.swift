@@ -105,8 +105,36 @@ func click(_ p: CGPoint) {
     mouse(.leftMouseUp, p)
 }
 
-let shortcutKey: CGKeyCode = 23 // "5"
-let shortcutFlags: CGEventFlags = [.maskControl, .maskShift]
+/// The shortcut from Rec's settings (default ⌃⇧5).
+let (shortcutKey, shortcutFlags): (CGKeyCode, CGEventFlags) = {
+    let keyCodes: [String: CGKeyCode] = [
+        "A": 0, "S": 1, "D": 2, "F": 3, "H": 4, "G": 5, "Z": 6, "X": 7, "C": 8, "V": 9, "B": 11, "Q": 12,
+        "W": 13, "E": 14, "R": 15, "Y": 16, "T": 17, "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23,
+        "9": 25, "7": 26, "8": 28, "0": 29, "O": 31, "U": 32, "I": 34, "P": 35, "L": 37, "J": 38, "K": 40,
+        "N": 45, "M": 46,
+    ]
+    let settings = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/com.alexhem.rec/settings.json")
+    var accelerator = "Control+Shift+5"
+    if let data = try? Data(contentsOf: settings),
+       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+       let s = json["shortcut"] as? String { accelerator = s }
+    var flags: CGEventFlags = []
+    var code: CGKeyCode = 23
+    for token in accelerator.split(separator: "+").map(String.init) {
+        switch token.lowercased() {
+        case "control", "ctrl": flags.insert(.maskControl)
+        case "alt", "option": flags.insert(.maskAlternate)
+        case "shift": flags.insert(.maskShift)
+        case "super", "cmd", "command", "meta": flags.insert(.maskCommand)
+        default:
+            let k = token.replacingOccurrences(of: "Digit", with: "").replacingOccurrences(of: "Key", with: "").uppercased()
+            if let c = keyCodes[k] { code = c } else { fail("can't press shortcut key \(token)") }
+        }
+    }
+    log("shortcut: \(accelerator)")
+    return (code, flags)
+}()
 func pressShortcut() { key(shortcutKey, shortcutFlags) }
 
 let display = CGDisplayBounds(CGMainDisplayID())
@@ -186,7 +214,9 @@ pressShortcut()
 waitFor("the selection overlay after the shortcut", timeout: 5, overlayVisible)
 let overlay = recWindows().first { $0.layer == overlayLayer && $0.onscreen && $0.bounds.origin == display.origin }
 check(overlay != nil && overlay!.bounds.size == display.size, "the overlay covers the whole main display")
-check(!recWindows().contains { $0.onscreen && $0.layer == 0 && $0.bounds.width >= 700 }, "the main window got out of the way")
+waitFor("the main window to get out of the way", timeout: 3) {
+    !recWindows().contains { $0.onscreen && $0.layer == 0 && $0.bounds.width >= 700 }
+}
 pause(0.5)
 key(53) // Esc
 waitFor("Esc to cancel the selection", timeout: 5) { !overlayVisible() }
