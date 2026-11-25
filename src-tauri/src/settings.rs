@@ -7,26 +7,44 @@ use serde::{Deserialize, Serialize};
 /// The shortcut Rec starts with: ⌃⇧5 on macOS, Ctrl+Shift+5 elsewhere.
 pub const DEFAULT_SHORTCUT: &str = "Control+Shift+5";
 
+/// The keys that stop a recording unless changed: ⌘↩ on macOS, Ctrl+Enter
+/// elsewhere.
+pub const DEFAULT_STOP_SHORTCUT: &str = if cfg!(target_os = "macos") {
+    "Super+Enter"
+} else {
+    "Control+Enter"
+};
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     /// Global shortcut in Tauri accelerator syntax, e.g. "Control+Shift+5".
     pub shortcut: String,
+    /// Stops a recording. `None` means `DEFAULT_STOP_SHORTCUT`.
+    pub stop_shortcut: Option<String>,
     /// Where recordings are saved. `None` means the Downloads folder.
     pub save_dir: Option<PathBuf>,
     /// Ask GitHub Releases for a newer version on launch.
     pub check_for_updates: bool,
     /// The first-run onboarding has been finished.
     pub onboarding_complete: bool,
+    /// Rec has asked macOS for Screen Recording. macOS shows its dialog only
+    /// once, so after that "Grant access" opens System Settings instead.
+    pub asked_screen_recording: bool,
+    /// The same, for Accessibility.
+    pub asked_accessibility: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings {
             shortcut: DEFAULT_SHORTCUT.to_string(),
+            stop_shortcut: None,
             save_dir: None,
             check_for_updates: true,
             onboarding_complete: false,
+            asked_screen_recording: false,
+            asked_accessibility: false,
         }
     }
 }
@@ -50,6 +68,13 @@ impl Settings {
         }
         let text = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
         write_atomic(path, text.as_bytes())
+    }
+
+    /// The keys that stop a recording.
+    pub fn effective_stop_shortcut(&self) -> &str {
+        self.stop_shortcut
+            .as_deref()
+            .unwrap_or(DEFAULT_STOP_SHORTCUT)
     }
 
     /// The folder recordings go to.
@@ -86,9 +111,12 @@ mod tests {
         let path = dir.path().join("nested/settings.json");
         let s = Settings {
             shortcut: "Alt+Shift+R".into(),
+            stop_shortcut: Some("Alt+Shift+S".into()),
             save_dir: Some(PathBuf::from("/tmp/videos")),
             check_for_updates: false,
             onboarding_complete: true,
+            asked_screen_recording: true,
+            asked_accessibility: false,
         };
         s.save(&path).unwrap();
         assert_eq!(Settings::load(&path), s);
@@ -112,6 +140,15 @@ mod tests {
         let s = Settings::load(&path);
         assert_eq!(s.shortcut, "Alt+Shift+R");
         assert!(s.check_for_updates);
+    }
+
+    #[test]
+    fn stop_shortcut_defaults_to_command_enter() {
+        let mut s = Settings::default();
+        assert_eq!(s.effective_stop_shortcut(), DEFAULT_STOP_SHORTCUT);
+        assert!(crate::shortcut::parse(DEFAULT_STOP_SHORTCUT).is_ok());
+        s.stop_shortcut = Some("Alt+Shift+S".into());
+        assert_eq!(s.effective_stop_shortcut(), "Alt+Shift+S");
     }
 
     #[test]

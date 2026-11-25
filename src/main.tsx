@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import "@fontsource/geist/500.css";
 import "./styles.css";
 import { Main } from "./windows/Main";
 import { Overlay } from "./windows/Overlay";

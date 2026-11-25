@@ -10,10 +10,10 @@
 // Checks, in order:
 //  1. The shortcut shows the selection overlay over the whole display.
 //  2. Esc cancels it.
-//  3. Dragging a region starts recording at once; the Stop pill appears
-//     outside the region; clicking it puts the MP4's absolute path on the
-//     clipboard; the file has the region's size and the expected length.
-//  4. A click without dragging cancels.
+//  3. Dragging a region starts recording at once; the Stop pill appears at
+//     the top centre of the display; clicking it puts the MP4's absolute path
+//     on the clipboard; the file has the region's size and the expected length.
+//  4. A click without dragging doesn't cancel; only Esc does.
 //  5. Recording the whole display: the pill sits inside the region but is
 //     not in the video (Rec excludes its own windows).
 //  6. History lists both recordings.
@@ -30,6 +30,17 @@ func fail(_ s: String) -> Never {
     exit(1)
 }
 func check(_ cond: Bool, _ s: String) { if !cond { fail(s) } else { log("ok: \(s)") } }
+/// Screenshots of each step for people to look at (REC_E2E_SHOTS = a folder).
+let shotsDir = ProcessInfo.processInfo.environment["REC_E2E_SHOTS"]
+func snap(_ name: String) {
+    guard let dir = shotsDir else { return }
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+    p.arguments = ["-x", "\(dir)/\(name).png"]
+    try? p.run()
+    p.waitUntilExit()
+}
 func pause(_ s: Double) { Thread.sleep(forTimeInterval: s) }
 
 struct Win {
@@ -174,8 +185,9 @@ let scale = Double(mode.pixelWidth) / Double(display.width)
 /// Rec's selection overlay sits at NSPopUpMenuWindowLevel.
 let overlayLayer = 101
 func overlayVisible() -> Bool { recWindows().contains { $0.layer == overlayLayer && $0.onscreen } }
+/// The Stop pill's window (the pill plus room for its shadow).
 func pill() -> Win? {
-    recWindows().first { $0.onscreen && abs($0.bounds.width - 168) < 1 && abs($0.bounds.height - 40) < 1 }
+    recWindows().first { $0.onscreen && abs($0.bounds.width - 340) < 1 && abs($0.bounds.height - 76) < 1 }
 }
 func clipboard() -> String? { NSPasteboard.general.string(forType: .string) }
 
@@ -242,11 +254,13 @@ pause(2)
 // 1 + 2: shortcut shows the overlay, Esc cancels.
 pressShortcut()
 waitFor("the selection overlay after the shortcut", timeout: 5, overlayVisible)
+pause(0.3)
+snap("01-after-shortcut")
 let overlay = recWindows().first { $0.layer == overlayLayer && $0.onscreen && $0.bounds.origin == display.origin }
 check(overlay != nil && overlay!.bounds.size == display.size, "the overlay covers the whole main display")
-waitFor("the main window to get out of the way", timeout: 3) {
-    !recWindows().contains { $0.onscreen && $0.layer == 0 && $0.bounds.width >= 700 }
-}
+pause(0.5)
+check(recWindows().contains { $0.onscreen && $0.layer == 0 && $0.bounds.width >= 700 },
+      "the main window stays where it is")
 pause(0.5)
 key(53) // Esc
 waitFor("Esc to cancel the selection", timeout: 5) { !overlayVisible() }
@@ -282,15 +296,22 @@ if pill() == nil {
 }
 waitFor("the Stop pill", timeout: 1) { pill() != nil }
 check(!overlayVisible(), "the overlay is gone while recording")
+pause(0.3)
+snap("02-recording")
 let p1 = pill()!
 log("pill at \(p1.bounds), region \(region)")
-check(!p1.bounds.intersects(region), "the pill sits outside the recorded region")
+let pillCentred: Bool = abs(p1.bounds.midX - display.midX) < 2 && abs(p1.bounds.minY - (display.minY + 28)) < 2
+check(pillCentred, "the pill is at the top centre of the display")
 check(display.contains(p1.bounds), "the pill is on the display")
 // Something to record.
 NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Calculator.app"))
 pause(2.5)
 click(CGPoint(x: p1.bounds.midX, y: p1.bounds.midY))
 let path1 = waitForPath()
+snap("03-path-copied")
+if let dir = shotsDir {
+    try? FileManager.default.copyItem(atPath: path1, toPath: "\(dir)/\(URL(fileURLWithPath: path1).lastPathComponent)")
+}
 check(path1.hasPrefix("/"), "the clipboard holds an absolute path: \(path1)")
 check(URL(fileURLWithPath: path1).lastPathComponent.range(of: #"^rec-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(-\d+)?\.mp4$"#, options: .regularExpression) != nil,
       "the file is named rec-YYYY-MM-DD-HH-MM-SS.mp4")
@@ -304,14 +325,17 @@ let heightOK: Bool = abs(Double(v1.size.height) - expectH) <= 2
 check(widthOK && heightOK, "the video has the region's size at full sharpness (\(v1.size) vs \(expectW)x\(expectH))")
 waitFor("the pill to go away after 'Path copied'", timeout: 6) { pill() == nil }
 
-// 4: a click without dragging cancels.
+// 4: a click without dragging doesn't cancel; only Esc does.
 pause(1)
 NSPasteboard.general.clearContents()
 pressShortcut()
 waitFor("the overlay for the click test", timeout: 5, overlayVisible)
 pause(0.5)
 click(CGPoint(x: display.midX, y: display.midY))
-waitFor("a click to cancel", timeout: 5) { !overlayVisible() }
+pause(1)
+check(overlayVisible(), "a click doesn't cancel the selection")
+key(53) // Esc
+waitFor("Esc to cancel after the click", timeout: 5) { !overlayVisible() }
 pause(1)
 check(pill() == nil && clipboard() == nil, "nothing was recorded")
 

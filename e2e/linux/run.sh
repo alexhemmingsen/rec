@@ -22,6 +22,12 @@ fail() {
   exit 1
 }
 ok() { say "ok: $*"; PASSED=$((PASSED + 1)); }
+# Screenshots of each step for people to look at (REC_E2E_SHOTS = a folder).
+snap() {
+  [[ -n "${REC_E2E_SHOTS:-}" ]] || return 0
+  mkdir -p "$REC_E2E_SHOTS"
+  ffmpeg -loglevel error -y -f x11grab -i "$DISPLAY" -frames:v 1 "$REC_E2E_SHOTS/$1.png" || true
+}
 
 # Visible windows of the app as "id x y w h name" lines.
 windows() {
@@ -31,7 +37,8 @@ windows() {
   done
 }
 overlay_visible() { windows | grep -q 'Rec selection'; }
-pill() { windows | awk '$4 == 168 && $5 == 40 { print; exit }'; }
+# The Stop pill's window: the pill plus room for its shadow.
+pill() { windows | awk '$4 == 340 && $5 == 76 { print; exit }'; }
 
 wait_for() { # description timeout command...
   local what=$1 timeout=$2; shift 2
@@ -73,6 +80,8 @@ say "screen ${SW}x${SH}"
 # 1 + 2: the shortcut shows the overlay; Esc cancels.
 xdotool key ctrl+shift+5
 wait_for "the selection overlay after the shortcut" 8 overlay_visible
+sleep 0.3
+snap 01-after-shortcut
 read -r _ OX OY OW OH _ < <(windows | grep 'Rec selection')
 [[ "$OX $OY $OW $OH" == "0 0 $SW $SH" ]] && ok "the overlay covers the screen" || fail "overlay at $OX,$OY ${OW}x$OH"
 sleep 0.5
@@ -86,14 +95,18 @@ wait_for "the overlay again" 8 overlay_visible
 sleep 0.5
 drag 160 140 560 440
 wait_for "the Stop pill" 10 has_pill
-not overlay_visible && ok "the overlay is gone while recording" || fail "overlay still visible"
+wait_for "the overlay to go away while recording" 3 not overlay_visible
+sleep 0.3
+snap 02-recording
 read -r PILL PX PY PW PH _ < <(pill)
 say "pill at $PX,$PY ${PW}x$PH; region 160,140 400x300"
-if (( PX + PW <= 160 || PX >= 560 || PY + PH <= 140 || PY >= 440 )); then ok "the pill sits outside the region"; else fail "the pill overlaps the region"; fi
+if (( PY >= 26 && PY <= 30 && (PX + PW / 2 - 960) ** 2 <= 4 )); then ok "the pill is at the top centre of the screen"; else fail "the pill isn't at the top centre"; fi
 sleep 2.5
 xdotool mousemove $((PX + PW / 2)) $((PY + PH / 2)) click 1
 wait_for "an .mp4 path on the clipboard" 15 has_path
+snap 03-path-copied
 FILE=$(clipboard)
+[[ -n "${REC_E2E_SHOTS:-}" ]] && cp "$FILE" "$REC_E2E_SHOTS/" 2>/dev/null
 say "clipboard: $FILE"
 [[ "$FILE" == /* ]] && ok "the path is absolute" || fail "not absolute: $FILE"
 [[ "$(basename "$FILE")" =~ ^rec-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}(-[0-9]+)?\.mp4$ ]] && ok "the file name matches rec-YYYY-MM-DD-HH-MM-SS.mp4" || fail "bad name"
@@ -106,13 +119,16 @@ DUR=$(grep duration= <<<"$INFO" | cut -d= -f2)
 awk -v d="$DUR" 'BEGIN { exit !(d > 1.8 && d < 8) }' && ok "the length matches the recording ($DUR s)" || fail "duration $DUR"
 wait_for "the pill to go away" 8 not has_pill
 
-# 4: a click without dragging cancels.
+# 4: a click without dragging doesn't cancel; only Esc does.
 printf '' | xclip -selection clipboard
 xdotool key ctrl+shift+5
 wait_for "the overlay for the click test" 8 overlay_visible
 sleep 0.5
 xdotool mousemove 900 500 click 1
-wait_for "a click to cancel" 5 not overlay_visible
+sleep 1
+overlay_visible && ok "a click doesn't cancel the selection" || fail "a click cancelled the selection"
+xdotool key Escape
+wait_for "Esc to cancel after the click" 5 not overlay_visible
 sleep 1
 ! has_pill && [[ -z "$(clipboard)" ]] && ok "nothing was recorded" || fail "something was recorded"
 

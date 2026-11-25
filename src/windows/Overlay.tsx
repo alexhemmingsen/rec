@@ -10,7 +10,7 @@ const NATIVE_DRAG = /Mac OS X|Macintosh/.test(navigator.userAgent);
 
 /**
  * Covers one display. Drag a box: recording starts the moment you let go.
- * Esc, or a click without dragging, cancels.
+ * Only Esc cancels.
  *
  * Pointer capture keeps every move and the release on this overlay, even if
  * the window manager or WebKit would otherwise route them elsewhere mid-drag.
@@ -18,6 +18,11 @@ const NATIVE_DRAG = /Mac OS X|Macintosh/.test(navigator.userAgent);
 export function Overlay({ displayId }: { displayId: number }) {
   const [start, setStart] = useState<Point | null>(null);
   const [current, setCurrent] = useState<Point | null>(null);
+  // The region being recorded: the frame stays up, click-through, until Stop.
+  const [recording, setRecording] = useState<Rect | null>(null);
+  // Blank just before the window hides, so it never flashes old content
+  // (like the dark tint) when it's shown again.
+  const [blank, setBlank] = useState(false);
   // Refs mirror the state so the window-level fallback sees current values.
   const startRef = useRef<Point | null>(null);
   const busy = useRef(false);
@@ -34,8 +39,18 @@ export function Overlay({ displayId }: { displayId: number }) {
     api.uiLog(`overlay ready ${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}`);
     const unlisten = listen("overlay-reset", () => {
       reset();
+      setRecording(null);
+      setBlank(false);
       root.current?.focus();
     });
+    const unlistenClear = listen("overlay-clear", () => {
+      reset();
+      setRecording(null);
+      setBlank(true);
+    });
+    const unlistenRecording = getCurrentWebviewWindow().listen<Rect>("overlay-recording", (e) =>
+      setRecording(e.payload),
+    );
     const unlistenDrag = getCurrentWebviewWindow().listen<Rect>("overlay-drag", (e) => {
       const r = e.payload;
       setStart({ x: r.x, y: r.y });
@@ -43,7 +58,9 @@ export function Overlay({ displayId }: { displayId: number }) {
     });
     return () => {
       unlisten.then((f) => f());
+      unlistenClear.then((f) => f());
       unlistenDrag.then((f) => f());
+      unlistenRecording.then((f) => f());
     };
   }, [reset]);
 
@@ -56,9 +73,9 @@ export function Overlay({ displayId }: { displayId: number }) {
       if (NATIVE_DRAG || !from || busy.current) return;
       busy.current = true;
       const rect = rectFromPoints(from, point(x, y));
+      // A click without a drag does nothing: only Esc cancels.
       if (isClick(rect)) {
         reset();
-        api.cancelSelection().catch(() => {});
         return;
       }
       api
@@ -113,6 +130,19 @@ export function Overlay({ displayId }: { displayId: number }) {
   const rect = start && current ? rectFromPoints(start, current) : null;
   const scale = window.devicePixelRatio || 1;
 
+  if (blank) return <div className="overlay recording" />;
+
+  if (recording) {
+    return (
+      <div className="overlay recording">
+        <div
+          className="selection"
+          style={{ left: recording.x, top: recording.y, width: recording.width, height: recording.height }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       ref={root}
@@ -122,9 +152,9 @@ export function Overlay({ displayId }: { displayId: number }) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
     >
-      {/* Always painted, so the window never has see-through pixels that
-          would let clicks fall through to the app behind. */}
-      <div className="overlay-dim" style={{ opacity: rect && !isClick(rect) ? 0 : 1 }} />
+      {/* No tint until you drag, but never fully see-through either: fully
+          transparent pixels would let clicks fall through to the app behind. */}
+      <div className="overlay-catch" style={{ opacity: rect && !isClick(rect) ? 0 : 1 }} />
       {rect && !isClick(rect) ? (
         <>
           <div className="selection" style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }} />
@@ -140,7 +170,9 @@ export function Overlay({ displayId }: { displayId: number }) {
         </>
       ) : (
         <div className="overlay-hint">
-          Drag to record &nbsp;·&nbsp; <kbd className="key">esc</kbd> to cancel
+          Drag to record
+          <span className="vrule" />
+          <kbd className="key">esc</kbd> to cancel
         </div>
       )}
     </div>

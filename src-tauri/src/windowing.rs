@@ -1,6 +1,8 @@
 //! The three kinds of window: the main window, one selection overlay per
 //! display, and the floating Stop pill.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use rec_capture::{DisplayInfo, Rect};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -130,10 +132,22 @@ fn pill_level() -> isize {
     0
 }
 
-/// Show the crosshair overlays and give the keyboard to the one under the
-/// mouse, so Esc cancels.
-pub fn show_overlays(app: &AppHandle, displays: &[DisplayInfo]) -> tauri::Result<()> {
+/// Show the selection overlays. With `pass_through` they let the mouse
+/// through (the macOS event tap catches drags) and Rec stays in the
+/// background, so you can keep using your apps. Otherwise they catch the
+/// mouse and Rec comes to the front.
+pub fn show_overlays(
+    app: &AppHandle,
+    displays: &[DisplayInfo],
+    pass_through: bool,
+) -> tauri::Result<()> {
+    SHOWN.fetch_add(1, Ordering::SeqCst);
     prepare_overlays(app, displays)?;
+    for (label, window) in app.webview_windows() {
+        if is_overlay(&label) {
+            let _ = window.set_ignore_cursor_events(pass_through);
+        }
+    }
     let _ = app.emit("overlay-reset", ());
     let focus_id = display_under_mouse(app, displays);
     for d in displays {
@@ -147,6 +161,9 @@ pub fn show_overlays(app: &AppHandle, displays: &[DisplayInfo]) -> tauri::Result
                 w.outer_size().ok()
             );
         }
+    }
+    if pass_through {
+        return Ok(());
     }
     #[cfg(target_os = "macos")]
     let _ = app.run_on_main_thread(crate::macos::activate_self);
@@ -191,12 +208,76 @@ fn display_under_mouse(app: &AppHandle, displays: &[DisplayInfo]) -> Option<u32>
         .map(|d| d.id)
 }
 
-pub fn hide_overlays(app: &AppHandle) {
-    for (label, window) in app.webview_windows() {
-        if is_overlay(&label) {
-            let _ = window.hide();
-        }
+/// The recorded region, relative to its display, for the overlay page.
+#[derive(Clone, Serialize)]
+struct FrameRegion {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+/// While recording, the overlay on the recorded display stays up as a frame:
+/// the region clear and the rest tinted, so you can see what's recorded. It
+/// lets clicks through and sits under the Stop pill. Rec's windows are left
+/// out of the video (by app on macOS, WDA_EXCLUDEFROMCAPTURE on Windows). On
+/// Linux nothing keeps them out of the capture, so the overlays go away.
+pub fn frame_overlay(app: &AppHandle, display_id: u32, region: Rect) {
+    if cfg!(target_os = "linux") {
+        hide_overlays(app);
+        return;
     }
+    let target = overlay_label(display_id);
+    for (label, window) in app.webview_windows() {
+        if !is_overlay(&label) {
+            continue;
+        }
+        if label != target {
+            let _ = window.hide();
+            continue;
+        }
+        let _ = window.set_ignore_cursor_events(true);
+        #[cfg(target_os = "macos")]
+        {
+            let w = window.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Ok(ns) = w.ns_window() {
+                    crate::macos::set_level(ns, crate::macos::PILL_LEVEL - 1);
+                }
+            });
+        }
+        let payload = FrameRegion {
+            x: region.x,
+            y: region.y,
+            width: region.width,
+            height: region.height,
+        };
+        let _ = app.emit_to(label.as_str(), "overlay-recording", payload);
+    }
+}
+
+/// Counts `show_overlays` calls, so a delayed hide never hides overlays that
+/// were shown again in the meantime.
+static SHOWN: AtomicU64 = AtomicU64::new(0);
+
+/// Clear the overlays, then hide them. A hidden window keeps its last picture
+/// (often the dark tint), which would flash when it's shown again; clearing
+/// first and hiding a few frames later leaves a blank picture instead.
+pub fn hide_overlays(app: &AppHandle) {
+    let _ = app.emit("overlay-clear", ());
+    let shown = SHOWN.load(Ordering::SeqCst);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        if SHOWN.load(Ordering::SeqCst) != shown {
+            return;
+        }
+        for (label, window) in app.webview_windows() {
+            if is_overlay(&label) {
+                let _ = window.hide();
+            }
+        }
+    });
 }
 
 #[derive(Clone, Serialize)]
@@ -214,21 +295,11 @@ pub fn ensure_pill(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     }
 }
 
-/// Show the Stop pill next to the recorded region.
-pub fn show_pill(
-    app: &AppHandle,
-    region_global: Rect,
-    display: &DisplayInfo,
-    started_at_ms: i64,
-) -> tauri::Result<()> {
+/// Show the Stop pill at the top centre of the display, where the "Drag to
+/// record" hint was.
+pub fn show_pill(app: &AppHandle, display: &DisplayInfo, started_at_ms: i64) -> tauri::Result<()> {
     let pill = ensure_pill(app)?;
-    let (x, y) = layout::pill_origin(
-        region_global,
-        display.frame,
-        layout::PILL_WIDTH,
-        layout::PILL_HEIGHT,
-    );
-    let frame = Rect::new(x, y, layout::PILL_WIDTH, layout::PILL_HEIGHT);
+    let frame = layout::pill_frame(display.frame);
     place(
         app,
         &pill,

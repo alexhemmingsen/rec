@@ -9,10 +9,13 @@ mod layout;
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
+mod mouse_tap;
 mod naming;
 mod recorder;
 mod settings;
 mod shortcut;
+mod sound;
 mod updater;
 mod windowing;
 
@@ -63,9 +66,12 @@ pub fn run() {
                     // on Linux waits for that very thread.
                     let app = app.clone();
                     let escape = recorder::is_escape(shortcut);
+                    let stop = recorder::is_custom_stop_shortcut(&app, shortcut);
                     std::thread::spawn(move || {
                         if escape {
-                            recorder::cancel_selection(&app);
+                            recorder::on_escape(&app);
+                        } else if stop {
+                            recorder::on_stop_shortcut(&app);
                         } else {
                             recorder::on_shortcut(&app);
                         }
@@ -123,6 +129,8 @@ pub fn run() {
             {
                 let h = handle.clone();
                 macos::watch_mouse(move |kind, x, y| recorder::on_native_mouse(&h, kind, x, y));
+                let h = handle.clone();
+                mouse_tap::install(move |kind, x, y| recorder::on_native_mouse(&h, kind, x, y));
             }
 
             // Create the overlays and the pill now so the shortcut is instant.
@@ -161,6 +169,7 @@ pub fn run() {
             commands::get_app_info,
             commands::set_shortcut,
             commands::set_shortcut_suspended,
+            commands::set_stop_shortcut,
             commands::choose_save_dir,
             commands::reset_save_dir,
             commands::set_open_at_login,
@@ -169,8 +178,12 @@ pub fn run() {
             commands::permission_status,
             commands::request_screen_permission,
             commands::open_permission_settings,
+            commands::accessibility_status,
+            commands::request_accessibility,
+            commands::open_accessibility_settings,
             commands::relaunch,
             commands::check_ffmpeg,
+            commands::install_ffmpeg,
             commands::copy_text,
             commands::list_history,
             commands::copy_recording_path,

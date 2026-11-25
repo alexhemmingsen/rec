@@ -42,7 +42,7 @@ Everything stays on your computer. There's no account, no cloud and no analytics
 ## The app
 
 - **Overview:** a short guide.
-- **Settings:** Screen Recording permission, the shortcut, the save folder, Open at login and the update check.
+- **Settings:** Screen Recording permission, the shortcut, the save folder, Launch Rec when starting device and the update check.
 - **History:** every recording with a thumbnail, date and length. Copy the path again, open it, show it in Finder, or delete it (it goes to the Trash). Rec never deletes anything on its own.
 
 Closing the window keeps Rec running, so the shortcut keeps working. Quit with ⌘Q.

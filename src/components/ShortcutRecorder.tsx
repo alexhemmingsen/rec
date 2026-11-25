@@ -11,10 +11,13 @@ export function ShortcutRecorder({
   shortcut,
   platform,
   onSaved,
+  save = api.setShortcut,
 }: {
   shortcut: string;
   platform: Platform;
   onSaved: (info: AppInfo) => void;
+  /** Stores the new keys; the start shortcut by default. */
+  save?: (accelerator: string) => Promise<AppInfo>;
 }) {
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,8 +39,7 @@ export function ShortcutRecorder({
         return;
       }
       setListening(false);
-      api
-        .setShortcut(result.accelerator)
+      save(result.accelerator)
         .then((info) => {
           setError(null);
           onSaved(info);
@@ -52,20 +54,35 @@ export function ShortcutRecorder({
       window.removeEventListener("blur", stop);
       api.setShortcutSuspended(false).catch(() => {});
     };
-  }, [listening, onSaved]);
+  }, [listening, onSaved, save]);
+
+  const field = (
+    <button
+      type="button"
+      className={`shortcut-field${listening ? " listening" : ""}`}
+      onClick={() => {
+        setError(null);
+        setListening((l) => !l);
+      }}
+    >
+      {listening ? <span>Press new shortcut</span> : <Keys shortcut={shortcut} platform={platform} />}
+    </button>
+  );
 
   return (
     <div>
-      <button
-        type="button"
-        className={`shortcut-field${listening ? " listening" : ""}`}
-        onClick={() => {
-          setError(null);
-          setListening((l) => !l);
-        }}
-      >
-        {listening ? <span>Press a new shortcut…</span> : <Keys shortcut={shortcut} platform={platform} />}
-      </button>
+      {listening ? (
+        <div className="shortcut-editing">
+          {field}
+          <span className="vrule" />
+          <span className="esc-hint">
+            <kbd className="key esc">esc</kbd>
+            to cancel
+          </span>
+        </div>
+      ) : (
+        field
+      )}
       {error && <p className="error-text">{error}</p>}
     </div>
   );

@@ -2,15 +2,21 @@ import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorText, type AppInfo, type HistoryItem, type RecordingError, type UpdateInfo } from "../lib/api";
 import { Onboarding } from "./Onboarding";
-import { Overview } from "./Overview";
-import { Settings } from "./Settings";
+import { General } from "./General";
 import { History } from "./History";
+import generalIcon from "../assets/icons/general.svg";
+import historyIcon from "../assets/icons/history.svg";
 
-type Page = "overview" | "settings" | "history";
+type Page = "general" | "history";
+
+const PAGES: { id: Page; label: string; icon: string }[] = [
+  { id: "general", label: "General", icon: generalIcon },
+  { id: "history", label: "History", icon: historyIcon },
+];
 
 export function Main() {
   const [info, setInfo] = useState<AppInfo | null>(null);
-  const [page, setPage] = useState<Page>("overview");
+  const [page, setPage] = useState<Page>("general");
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [error, setError] = useState<RecordingError | null>(null);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
@@ -68,59 +74,49 @@ export function Main() {
   return (
     <div className="shell">
       <nav className="sidebar" data-tauri-drag-region>
-        <div className="brand" data-tauri-drag-region>
-          <span className="brand-dot" />
-          Rec
+        <div className="sidebar-nav">
+          {PAGES.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="nav-item"
+              aria-current={page === p.id ? "page" : undefined}
+              onClick={() => setPage(p.id)}
+            >
+              <img src={p.icon} className="icon" width={16} height={16} alt="" draggable={false} />
+              {p.label}
+            </button>
+          ))}
         </div>
-        {(
-          [
-            ["overview", "Overview"],
-            ["settings", "Settings"],
-            ["history", "History"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            className="nav-item"
-            aria-current={page === id ? "page" : undefined}
-            onClick={() => setPage(id)}
-          >
-            {label}
-            {id === "history" && history.length > 0 && <span className="nav-count">{history.length}</span>}
-          </button>
-        ))}
-        <div className="sidebar-foot">Version {info.version}</div>
       </nav>
       <main className="content">
         <div className="drag-strip" data-tauri-drag-region />
         {(error || update) && (
-          <div className="banner-wrap">
+          <div className="banners">
             {error && (
               <div className="banner" role="alert">
                 <p>{error.message}</p>
-                {error.permission && (
-                  <button type="button" className="btn" onClick={() => setPage("settings")}>
-                    Open Settings
+                {error.permission && page !== "general" && (
+                  <button type="button" className="button" onClick={() => setPage("general")}>
+                    Open General
                   </button>
                 )}
-                <button type="button" className="btn ghost" onClick={() => setError(null)}>
+                <button type="button" className="button" onClick={() => setError(null)}>
                   Dismiss
                 </button>
               </div>
             )}
             {update && (
-              <div className="banner update" role="status" style={{ marginTop: error ? 8 : 0 }}>
+              <div className="banner update" role="status">
                 <p>Rec {update.version} is available.</p>
-                <button type="button" className="btn primary" disabled={updating} onClick={installUpdate}>
+                <button type="button" className="button primary" disabled={updating} onClick={installUpdate}>
                   {updating ? "Updating…" : "Restart to update"}
                 </button>
               </div>
             )}
           </div>
         )}
-        {page === "overview" && <Overview info={info} />}
-        {page === "settings" && <Settings info={info} onInfo={setInfo} onToast={showToast} />}
+        {page === "general" && <General info={info} onInfo={setInfo} onToast={showToast} />}
         {page === "history" && <History items={history} platform={info.platform} onChanged={refreshHistory} onToast={showToast} />}
       </main>
       {toast && <div className="toast">{toast}</div>}

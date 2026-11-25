@@ -125,9 +125,94 @@ pub fn detect(os: &str) -> FfmpegStatus {
     }
 }
 
+/// The script Terminal runs on macOS. It finds Homebrew even when the login
+/// shell doesn't set it up, and sends people to brew.sh when it's missing.
+pub const MACOS_INSTALL_SCRIPT: &str = r#"#!/bin/zsh -l
+clear
+for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+  [ -x "$b" ] && eval "$("$b" shellenv)"
+done
+if ! command -v brew >/dev/null 2>&1; then
+  echo "ffmpeg installs with Homebrew, which isn't on this Mac yet."
+  echo "Opening https://brew.sh. Install Homebrew, then click Install in Rec again."
+  open "https://brew.sh"
+  exit 1
+fi
+echo "Installing ffmpeg for Rec..."
+echo
+brew install ffmpeg && echo && echo "Done. You can close this window and go back to Rec."
+"#;
+
+/// Open a terminal window that runs the install command, so people see the
+/// progress and can answer prompts (a password, Homebrew questions). Rec
+/// notices the result by checking again.
+#[cfg(target_os = "macos")]
+pub fn open_install_terminal() -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let script = std::env::temp_dir().join("rec-install-ffmpeg.command");
+    std::fs::write(&script, MACOS_INSTALL_SCRIPT).map_err(|e| e.to_string())?;
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+        .map_err(|e| e.to_string())?;
+    let opened = std::process::Command::new("open")
+        .arg(&script)
+        .status()
+        .map_err(|e| e.to_string())?;
+    if opened.success() {
+        Ok(())
+    } else {
+        Err("Couldn't open Terminal. Run this in a terminal: brew install ffmpeg".into())
+    }
+}
+
+#[cfg(windows)]
+pub fn open_install_terminal() -> Result<(), String> {
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", "cmd", "/K", install_command("windows")])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| {
+            format!("Couldn't open a terminal ({e}). Run this in a terminal: winget install ffmpeg")
+        })
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+pub fn open_install_terminal() -> Result<(), String> {
+    let run = format!(
+        "{}; echo; printf 'Press Enter to close. '; read _",
+        install_command("linux")
+    );
+    let terminals: [(&str, &[&str]); 4] = [
+        ("x-terminal-emulator", &["-e"]),
+        ("gnome-terminal", &["--"]),
+        ("konsole", &["-e"]),
+        ("xterm", &["-e"]),
+    ];
+    for (term, flag) in terminals {
+        let spawned = std::process::Command::new(term)
+            .args(flag)
+            .args(["sh", "-c", run.as_str()])
+            .spawn();
+        if spawned.is_ok() {
+            return Ok(());
+        }
+    }
+    Err("Couldn't open a terminal. Run this in a terminal: sudo apt install ffmpeg".into())
+}
+
+#[cfg(not(any(unix, windows)))]
+pub fn open_install_terminal() -> Result<(), String> {
+    Err("Installing ffmpeg from Rec isn't supported here.".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn macos_script_installs_with_homebrew() {
+        assert!(MACOS_INSTALL_SCRIPT.starts_with("#!/bin/zsh -l\n"));
+        assert!(MACOS_INSTALL_SCRIPT.contains(install_command("macos")));
+    }
 
     #[test]
     fn install_commands_match_the_spec() {

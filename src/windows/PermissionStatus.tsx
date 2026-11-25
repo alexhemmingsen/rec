@@ -1,22 +1,58 @@
 import { useEffect, useState } from "react";
 import { api, type AppInfo, type Permission } from "../lib/api";
+import screenRecordingIcon from "../assets/icons/screen-recording.svg";
+import accessibilityIcon from "../assets/icons/accessibility.svg";
+
+export type PermissionKind = "screen" | "accessibility";
+
+const KINDS = {
+  screen: {
+    label: "Screen recording permissions",
+    icon: screenRecordingIcon,
+    current: (info: AppInfo) => info.permission,
+    status: api.permissionStatus,
+    request: api.requestScreenPermission,
+    openSettings: api.openPermissionSettings,
+    // macOS often only reports a new Screen Recording grant after a restart.
+    restartAfterAsking: true,
+  },
+  accessibility: {
+    label: "Accessibility permissions",
+    icon: accessibilityIcon,
+    current: (info: AppInfo) => info.accessibility,
+    status: api.accessibilityStatus,
+    request: api.requestAccessibility,
+    openSettings: api.openAccessibilitySettings,
+    restartAfterAsking: false,
+  },
+};
 
 /**
- * Screen Recording permission status with the actions to fix it. macOS often
- * only reports a new grant after the app restarts, hence the Restart button.
+ * A permission's status ("Granted" / "Not granted") and the action that fits
+ * it. After asking for Screen Recording, "Restart Rec" appears too, since
+ * macOS often only reports that grant after a restart.
  */
-export function PermissionStatus({ info, onInfo }: { info: AppInfo; onInfo: (info: AppInfo) => void }) {
-  const [permission, setPermission] = useState<Permission>(info.permission);
+export function PermissionControl({
+  kind,
+  info,
+  onInfo,
+}: {
+  kind: PermissionKind;
+  info: AppInfo;
+  onInfo: (info: AppInfo) => void;
+}) {
+  const k = KINDS[kind];
+  const current = k.current(info);
+  const [permission, setPermission] = useState<Permission>(current);
   const [asked, setAsked] = useState(false);
 
-  useEffect(() => setPermission(info.permission), [info.permission]);
+  useEffect(() => setPermission(current), [current]);
 
   // Keep the status fresh while it's not granted.
   useEffect(() => {
-    if (permission === "granted" || permission === "notRequired") return;
+    if (permission !== "notGranted") return;
     const id = window.setInterval(() => {
-      api
-        .permissionStatus()
+      k.status()
         .then((p) => {
           setPermission(p);
           if (p === "granted") api.appInfo().then(onInfo).catch(() => {});
@@ -24,65 +60,68 @@ export function PermissionStatus({ info, onInfo }: { info: AppInfo; onInfo: (inf
         .catch(() => {});
     }, 1500);
     return () => window.clearInterval(id);
-  }, [permission, onInfo]);
+  }, [permission, onInfo, k]);
 
-  if (!info.recordingSupported) {
+  if (permission !== "notGranted") {
     return (
-      <div className="row">
-        <div className="row-main">
-          <p className="row-title">Screen recording</p>
-          <p className="row-hint">Recording isn't available on this platform yet. Rec ships on macOS first.</p>
-        </div>
-        <span className="status neutral">Coming soon</span>
-      </div>
-    );
-  }
-
-  if (permission === "granted" || permission === "notRequired") {
-    return (
-      <div className="row">
-        <div className="row-main">
-          <p className="row-title">Screen Recording</p>
-          <p className="row-hint">Rec can record your screen.</p>
-        </div>
-        <span className="status ok">Granted</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="row">
-      <div className="row-main">
-        <p className="row-title">Screen Recording</p>
-        <p className="row-hint">
-          {asked
-            ? "Turn on Rec in System Settings → Privacy & Security → Screen & System Audio Recording, then restart Rec."
-            : "macOS needs your permission before Rec can record."}
-        </p>
-      </div>
-      <div className="row-actions">
-        {asked ? (
+      <div className="row-controls">
+        <span className="status granted">{permission === "notRequired" ? "Not needed" : "Granted"}</span>
+        {info.platform === "macos" && (
           <>
-            <button type="button" className="btn ghost" onClick={() => api.openPermissionSettings()}>
-              Open System Settings
-            </button>
-            <button type="button" className="btn primary" onClick={() => api.relaunch()}>
-              Restart Rec
+            <span className="vrule" />
+            <button type="button" className="button" onClick={() => k.openSettings()}>
+              Open system settings
             </button>
           </>
-        ) : (
-          <button
-            type="button"
-            className="btn primary"
-            onClick={() => {
-              setAsked(true);
-              api.requestScreenPermission().then(setPermission).catch(() => {});
-            }}
-          >
-            Grant access
-          </button>
         )}
       </div>
+    );
+  }
+
+  // One button: the first click asks macOS (its dialog), later clicks open
+  // System Settings (macOS asks only once). Rec remembers which applies.
+  const restart = asked && k.restartAfterAsking;
+  return (
+    <div className="row-controls">
+      <span className="status denied">Not granted</span>
+      <span className="vrule" />
+      <button
+        type="button"
+        className={restart ? "button" : "button primary"}
+        onClick={() => {
+          setAsked(true);
+          k.request().then(setPermission).catch(() => {});
+        }}
+      >
+        Grant access
+      </button>
+      {restart && (
+        <button type="button" className="button primary" onClick={() => api.relaunch()}>
+          Restart Rec
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** A permission as a settings row: icon, name, status and action. */
+export function PermissionRow({
+  kind,
+  info,
+  onInfo,
+}: {
+  kind: PermissionKind;
+  info: AppInfo;
+  onInfo: (info: AppInfo) => void;
+}) {
+  const k = KINDS[kind];
+  return (
+    <div className="group-row">
+      <div className="row-label">
+        <img src={k.icon} className="icon" width={16} height={16} alt="" draggable={false} />
+        <span>{k.label}</span>
+      </div>
+      <PermissionControl kind={kind} info={info} onInfo={onInfo} />
     </div>
   );
 }

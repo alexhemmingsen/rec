@@ -71,6 +71,17 @@ pub fn configure_floating(ns_window: *mut c_void, frame: Rect, level: isize) {
     window.setFrame_display(to_cocoa(frame, primary_height(mtm)), true);
 }
 
+/// Move a floating window to another level (e.g. the recording frame under
+/// the Stop pill). Main thread only.
+pub fn set_level(ns_window: *mut c_void, level: isize) {
+    if ns_window.is_null() {
+        return;
+    }
+    // SAFETY: Tauri hands out a valid NSWindow pointer, used on the main thread.
+    let window: &NSWindow = unsafe { &*(ns_window as *const NSWindow) };
+    window.setLevel(level);
+}
+
 /// The mouse position in top-left global coordinates.
 pub fn mouse_location() -> Option<(f64, f64)> {
     let mtm = MainThreadMarker::new()?;

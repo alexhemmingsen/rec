@@ -12,7 +12,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::history::{Entry, History, Item};
 use crate::settings::Settings;
-use crate::{layout, naming, windowing};
+use crate::{layout, naming, sound, windowing};
 
 pub const FPS: u32 = 30;
 /// A click without dragging (or a drag smaller than this) cancels.
@@ -46,9 +46,6 @@ impl Phase {
 /// What to put back when a recording ends.
 #[derive(Default)]
 pub struct Restore {
-    /// The main window was in front when the shortcut was pressed (e.g. the
-    /// onboarding's practice step): show it again afterwards.
-    pub main_was_focused: bool,
     /// The app in front before Rec took focus for the overlay.
     pub previous_app: Option<i32>,
 }
@@ -116,6 +113,123 @@ fn set_escape(app: &AppHandle, on: bool) {
     }
 }
 
+/// Choosing a region is over (recording, or cancelled): Esc and the mouse
+/// go back to normal.
+fn end_selection_input(app: &AppHandle) {
+    set_escape(app, false);
+    #[cfg(target_os = "macos")]
+    crate::mouse_tap::deactivate();
+}
+
+/// macOS with Accessibility: clicks, scrolling and typing keep going to your
+/// apps while you choose; only a drag starts the selection. False means the
+/// overlay has to catch the mouse instead.
+fn pass_clicks_through(app: &AppHandle) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _ = app.run_on_main_thread(move || {
+            let _ = tx.send(crate::mouse_tap::activate());
+        });
+        rx.recv_timeout(std::time::Duration::from_millis(500))
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        false
+    }
+}
+
+/// The stop shortcut, when it differs from the start shortcut (which is
+/// always registered and stops a recording itself when they're the same).
+fn separate_stop_shortcut(app: &AppHandle) -> Option<String> {
+    let state = app.state::<AppState>();
+    let settings = state.settings.lock().unwrap();
+    let stop = settings.effective_stop_shortcut();
+    (stop != settings.shortcut).then(|| stop.to_string())
+}
+
+/// The stop shortcut is only claimed while recording, so it doesn't block
+/// those keys (⌘↩ by default) in other apps the rest of the time.
+fn set_stop_shortcut_active(app: &AppHandle, on: bool) {
+    let Some(stop) = separate_stop_shortcut(app) else {
+        return;
+    };
+    let gs = app.global_shortcut();
+    if on {
+        if let Err(e) = gs.register(stop.as_str()) {
+            log::warn!("could not register the stop shortcut {stop}: {e}");
+        }
+    } else {
+        let _ = gs.unregister(stop.as_str());
+    }
+}
+
+/// Esc: cancels choosing a region, or abandons a recording (stops it and
+/// throws the video away: no file, no History entry, nothing copied).
+pub fn on_escape(app: &AppHandle) {
+    let recording = matches!(
+        *app.state::<AppState>().phase.lock().unwrap(),
+        Phase::Recording { .. }
+    );
+    if recording {
+        abandon_recording(app);
+    } else {
+        cancel_selection(app);
+    }
+}
+
+pub fn abandon_recording(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let (recording, path) = {
+        let mut phase = state.phase.lock().unwrap();
+        match std::mem::replace(&mut *phase, Phase::Finishing) {
+            Phase::Recording {
+                recording, path, ..
+            } => (recording, path),
+            other => {
+                *phase = other;
+                return;
+            }
+        }
+    };
+    log::info!("recording abandoned with Esc");
+    windowing::hide_overlays(app);
+    windowing::hide_pill(app);
+    set_escape(app, false);
+    set_stop_shortcut_active(app, false);
+    if let Err(e) = recording.stop() {
+        log::warn!("stopping the abandoned recording: {e}");
+    }
+    if let Err(e) = std::fs::remove_file(&path) {
+        log::warn!("cannot delete {}: {e}", path.display());
+    }
+    *state.phase.lock().unwrap() = Phase::Idle;
+    let _ = app.emit("phase-changed", "idle");
+    restore_after(app);
+}
+
+/// The pressed keys are a stop shortcut different from the start shortcut.
+pub fn is_custom_stop_shortcut(app: &AppHandle, shortcut: &Shortcut) -> bool {
+    separate_stop_shortcut(app)
+        .and_then(|s| s.parse::<Shortcut>().ok())
+        .is_some_and(|s| &s == shortcut)
+}
+
+/// Stop the recording from the keyboard. The Stop pill does the stopping, so
+/// it shows "Saving…" and "Path copied" just as when it's clicked.
+pub fn on_stop_shortcut(app: &AppHandle) {
+    let recording = matches!(
+        *app.state::<AppState>().phase.lock().unwrap(),
+        Phase::Recording { .. }
+    );
+    log::info!("stop shortcut pressed; recording: {recording}");
+    if recording {
+        let _ = app.emit_to(windowing::PILL, "pill-stop", ());
+    }
+}
+
 pub fn is_escape(shortcut: &Shortcut) -> bool {
     ESCAPE
         .parse::<Shortcut>()
@@ -128,13 +242,24 @@ pub fn on_shortcut(app: &AppHandle) {
     let state = app.state::<AppState>();
     let mut phase = state.phase.lock().unwrap();
     log::info!("shortcut pressed while {}", phase.name());
-    // Pressing the shortcut while selecting or recording does nothing.
+    // While recording, the start shortcut stops it only when it's also set
+    // as the stop shortcut.
+    if matches!(*phase, Phase::Recording { .. }) {
+        drop(phase);
+        if separate_stop_shortcut(app).is_none() {
+            on_stop_shortcut(app);
+        }
+        return;
+    }
+    // Pressing the shortcut while choosing a region does nothing.
     if !matches!(*phase, Phase::Idle) {
         return;
     }
     if rec_capture::permission_status() == Permission::NotGranted {
         drop(phase);
-        rec_capture::request_permission();
+        if crate::commands::first_ask(app, |s| &mut s.asked_screen_recording) {
+            rec_capture::request_permission();
+        }
         windowing::show_main(app);
         emit_error(app, &CaptureError::PermissionDenied);
         return;
@@ -147,29 +272,18 @@ pub fn on_shortcut(app: &AppHandle) {
         return;
     }
 
-    // Remember what to give focus back to, and get the main window out of the
-    // way so it doesn't cover what you want to record.
-    {
-        let mut restore = state.restore.lock().unwrap();
-        let main = app.get_webview_window(windowing::MAIN);
-        let main_visible = main
-            .as_ref()
-            .and_then(|w| w.is_visible().ok())
-            .unwrap_or(false);
-        let main_focused = main
-            .as_ref()
-            .and_then(|w| w.is_focused().ok())
-            .unwrap_or(false);
-        restore.main_was_focused = main_visible && main_focused;
-        restore.previous_app = frontmost_app(app);
-        if main_visible && let Some(w) = main {
-            let _ = w.hide();
-        }
-    }
+    sound::play_shortcut(app);
 
-    if let Err(e) = windowing::show_overlays(app, &displays) {
+    // Remember what to give focus back to. Windows on screen stay as they
+    // are: you arrange the desktop, Rec records it.
+    state.restore.lock().unwrap().previous_app = frontmost_app(app);
+
+    let pass_through = pass_clicks_through(app);
+    log::info!("selecting; clicks pass through: {pass_through}");
+    if let Err(e) = windowing::show_overlays(app, &displays, pass_through) {
         log::error!("cannot show the selection overlay: {e}");
         drop(phase);
+        end_selection_input(app);
         restore_after(app);
         return;
     }
@@ -211,13 +325,7 @@ fn reactivate_previous(app: &AppHandle) {
 
 /// Put focus back where it was before the shortcut.
 fn restore_after(app: &AppHandle) {
-    let state = app.state::<AppState>();
-    let main_was_focused = std::mem::take(&mut state.restore.lock().unwrap().main_was_focused);
-    if main_was_focused {
-        windowing::show_main(app);
-    } else {
-        reactivate_previous(app);
-    }
+    reactivate_previous(app);
 }
 
 /// Esc, or a click without a drag, on the overlay.
@@ -230,7 +338,7 @@ pub fn cancel_selection(app: &AppHandle) {
     }
     *phase = Phase::Idle;
     drop(phase);
-    set_escape(app, false);
+    end_selection_input(app);
     windowing::hide_overlays(app);
     restore_after(app);
     let _ = app.emit("phase-changed", "idle");
@@ -256,14 +364,14 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
     let Some(display) = displays.iter().find(|d| d.id == display_id).cloned() else {
         return Err(format!("unknown display {display_id}"));
     };
-    set_escape(app, false);
-    windowing::hide_overlays(app);
+    end_selection_input(app);
 
     let region = match region.clamp_to(display.frame.width, display.frame.height) {
         Some(r) if r.width >= MIN_REGION && r.height >= MIN_REGION => r,
         _ => {
             *phase = Phase::Idle;
             drop(phase);
+            windowing::hide_overlays(app);
             restore_after(app);
             let _ = app.emit("phase-changed", "idle");
             return Ok(());
@@ -275,26 +383,22 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
         *phase = Phase::Idle;
         drop(phase);
         let err = CaptureError::Platform(format!("cannot create {}: {e}", dir.display()));
+        windowing::hide_overlays(app);
         restore_after(app);
         windowing::show_main(app);
         emit_error(app, &err);
         return Err(err.to_string());
     }
     let path = naming::unique_path(&dir, Local::now());
-    // Where the Stop pill will go, relative to the region, if it lands
-    // inside it (the region fills the screen).
+    // Where the Stop pill will go (top centre of the display), relative to
+    // the region, in case the region covers it.
     let global = layout::to_global(region, display.frame);
-    let (px, py) = layout::pill_origin(
-        global,
-        display.frame,
-        layout::PILL_WIDTH,
-        layout::PILL_HEIGHT,
-    );
+    let frame = layout::pill_frame(display.frame);
     let pill = Rect::new(
-        px - global.x,
-        py - global.y,
-        layout::PILL_WIDTH,
-        layout::PILL_HEIGHT,
+        frame.x - global.x,
+        frame.y - global.y,
+        frame.width,
+        frame.height,
     );
     let exclude = (pill.x < region.width
         && pill.y < region.height
@@ -324,9 +428,14 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
                 started_at_ms,
             };
             drop(phase);
+            set_stop_shortcut_active(app, true);
+            // Esc abandons the recording.
+            set_escape(app, true);
+            // Keep the box you drew on screen while recording.
+            windowing::frame_overlay(app, display_id, region);
             // Give the keyboard back to the app being recorded.
             reactivate_previous(app);
-            match windowing::show_pill(app, global, &display, started_at_ms) {
+            match windowing::show_pill(app, &display, started_at_ms) {
                 Ok(()) => log::info!("Stop pill shown"),
                 Err(e) => log::error!("cannot show the Stop pill: {e}"),
             }
@@ -336,6 +445,7 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
         Err(err) => {
             *phase = Phase::Idle;
             drop(phase);
+            windowing::hide_overlays(app);
             restore_after(app);
             windowing::show_main(app);
             emit_error(app, &err);
@@ -398,11 +508,21 @@ pub fn on_native_mouse(app: &AppHandle, kind: crate::macos::MouseKind, x: f64, y
                 (sx - ex).abs(),
                 (sy - ey).abs(),
             );
+            if region.width < MIN_REGION || region.height < MIN_REGION {
+                // A click or a box too small to record: keep choosing. Only
+                // Esc cancels.
+                let none = DragRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                };
+                let _ = app.emit_to(windowing::overlay_label(d.id), "overlay-drag", none);
+                return;
+            }
             let (app, id) = (app.clone(), d.id);
             std::thread::spawn(move || {
-                if region.width < MIN_REGION || region.height < MIN_REGION {
-                    cancel_selection(&app);
-                } else if let Err(e) = start_recording(&app, id, region) {
+                if let Err(e) = start_recording(&app, id, region) {
                     log::info!("start_recording: {e}");
                 }
             });
@@ -434,6 +554,9 @@ pub fn stop_recording(app: &AppHandle) -> Result<Item, String> {
             }
         }
     };
+    windowing::hide_overlays(app);
+    set_escape(app, false);
+    set_stop_shortcut_active(app, false);
 
     let result = recording.stop();
     log::info!(

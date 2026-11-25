@@ -77,6 +77,7 @@ jobs:
         # delivers mouse events to Rec's process directly (REC_E2E_DIRECT).
         env:
           REC_E2E_DIRECT: "1"
+          REC_E2E_SHOTS: ${{ runner.temp }}/shots
         run: '"$RUNNER_TEMP/rec-e2e" "$PWD/target/release/bundle/macos/Rec.app"'
       - name: Diagnostics
         if: failure()
@@ -84,10 +85,12 @@ jobs:
           cat ~/Library/Logs/com.alexhem.rec/Rec.log || true
           screencapture -x "$RUNNER_TEMP/screen.png" || true
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: e2e-${{ matrix.os }}
-          path: ${{ runner.temp }}/screen.png
+          path: |
+            ${{ runner.temp }}/screen.png
+            ${{ runner.temp }}/shots
           if-no-files-found: ignore
 
   linux-e2e:
@@ -114,12 +117,15 @@ jobs:
         run: |
           BIN=$(ls target/release/Rec target/release/rec 2>/dev/null | head -1)
           export SHOT="$RUNNER_TEMP/screen.png"
+          export REC_E2E_SHOTS="$RUNNER_TEMP/shots"
           xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- e2e/linux/run.sh "$PWD/$BIN"
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: e2e-linux
-          path: ${{ runner.temp }}/screen.png
+          path: |
+            ${{ runner.temp }}/screen.png
+            ${{ runner.temp }}/shots
           if-no-files-found: ignore
 
   windows-e2e:
@@ -143,6 +149,8 @@ jobs:
       - run: pnpm tauri build --no-bundle
       - name: End-to-end test
         shell: pwsh
+        env:
+          REC_E2E_SHOTS: ${{ runner.temp }}\shots
         run: |
           $bin = Get-ChildItem target\release\Rec.exe, target\release\rec.exe -ErrorAction SilentlyContinue | Select-Object -First 1
           ./e2e/windows/run.ps1 -App $bin.FullName
@@ -156,8 +164,10 @@ jobs:
           [System.Drawing.Graphics]::FromImage($img).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
           $img.Save("$env:RUNNER_TEMP\screen.png")
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: e2e-windows
-          path: ${{ runner.temp }}/screen.png
+          path: |
+            ${{ runner.temp }}/screen.png
+            ${{ runner.temp }}/shots
           if-no-files-found: ignore

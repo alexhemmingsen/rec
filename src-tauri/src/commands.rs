@@ -30,12 +30,17 @@ pub struct AppInfo {
     pub platform: &'static str,
     pub version: String,
     pub shortcut: String,
+    /// The keys that stop a recording (⌘↩ unless changed).
+    pub stop_shortcut: String,
     pub save_dir: String,
     pub save_dir_is_default: bool,
     pub check_for_updates: bool,
     pub onboarding_complete: bool,
     pub open_at_login: bool,
     pub permission: &'static str,
+    /// macOS Accessibility: lets you keep using your apps after the
+    /// shortcut, with only a drag starting the selection.
+    pub accessibility: &'static str,
     pub recording_supported: bool,
     pub phase: &'static str,
 }
@@ -48,6 +53,17 @@ fn permission_name() -> &'static str {
     }
 }
 
+fn accessibility_name() -> &'static str {
+    #[cfg(target_os = "macos")]
+    return if crate::mouse_tap::accessibility_granted() {
+        "granted"
+    } else {
+        "notGranted"
+    };
+    #[cfg(not(target_os = "macos"))]
+    "notRequired"
+}
+
 fn info(app: &AppHandle) -> AppInfo {
     let state = app.state::<AppState>();
     let settings = state.settings.lock().unwrap().clone();
@@ -58,11 +74,13 @@ fn info(app: &AppHandle) -> AppInfo {
             .to_string_lossy()
             .into_owned(),
         save_dir_is_default: settings.save_dir.is_none(),
+        stop_shortcut: settings.effective_stop_shortcut().to_string(),
         shortcut: settings.shortcut,
         check_for_updates: settings.check_for_updates,
         onboarding_complete: settings.onboarding_complete,
         open_at_login: app.autolaunch().is_enabled().unwrap_or(false),
         permission: permission_name(),
+        accessibility: accessibility_name(),
         recording_supported: cfg!(any(target_os = "macos", windows, target_os = "linux")),
         phase: state.phase.lock().unwrap().name(),
     }
@@ -106,6 +124,18 @@ pub fn set_shortcut(app: AppHandle, accelerator: String) -> Result<AppInfo, Stri
         ));
     }
     update_settings(&app, |s| s.shortcut = accelerator)
+}
+
+/// Set the keys that stop a recording (⌘↩ by default). They're only claimed
+/// while recording (see `recorder::set_stop_shortcut_active`); the start
+/// shortcut's keys work too, and then that shortcut both starts and stops.
+#[tauri::command]
+pub fn set_stop_shortcut(app: AppHandle, accelerator: String) -> Result<AppInfo, String> {
+    shortcut::parse(&accelerator)?;
+    update_settings(&app, |s| {
+        s.stop_shortcut =
+            (accelerator != crate::settings::DEFAULT_STOP_SHORTCUT).then_some(accelerator);
+    })
 }
 
 /// Pause the global shortcut while the user records a new one in Settings.
@@ -178,20 +208,73 @@ pub fn permission_status() -> &'static str {
     permission_name()
 }
 
-/// Ask macOS for Screen Recording access and open the matching Settings pane.
+/// "Grant access" for Screen Recording does one thing per click: the first
+/// time it asks macOS (whose dialog adds Rec to the list in System Settings);
+/// after that macOS won't ask again, so it opens System Settings instead.
 #[tauri::command]
 pub fn request_screen_permission(app: AppHandle) -> &'static str {
     if rec_capture::permission_status() == rec_capture::Permission::NotGranted {
-        rec_capture::request_permission();
-        open_permission_settings(app);
+        if first_ask(&app, |s| &mut s.asked_screen_recording) {
+            rec_capture::request_permission();
+        } else {
+            open_permission_settings(app);
+        }
     }
     permission_name()
+}
+
+/// True, and remembered, the first time Rec asks for a permission.
+pub fn first_ask(
+    app: &AppHandle,
+    flag: impl FnOnce(&mut crate::settings::Settings) -> &mut bool,
+) -> bool {
+    let state = app.state::<AppState>();
+    let mut settings = state.settings.lock().unwrap();
+    let asked = flag(&mut settings);
+    if *asked {
+        return false;
+    }
+    *asked = true;
+    if let Err(e) = settings.save(&state.settings_path) {
+        log::warn!("cannot save settings: {e}");
+    }
+    true
 }
 
 #[tauri::command]
 pub fn open_permission_settings(app: AppHandle) {
     if cfg!(target_os = "macos") {
         let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+        if let Err(e) = app.opener().open_url(url, None::<&str>) {
+            log::error!("cannot open System Settings: {e}");
+        }
+    }
+}
+
+#[tauri::command]
+pub fn accessibility_status() -> &'static str {
+    accessibility_name()
+}
+
+/// "Grant access" for Accessibility: asks macOS the first time, opens System
+/// Settings after that (see `request_screen_permission`).
+#[tauri::command]
+pub fn request_accessibility(app: AppHandle) -> &'static str {
+    if accessibility_name() == "notGranted" {
+        if first_ask(&app, |s| &mut s.asked_accessibility) {
+            #[cfg(target_os = "macos")]
+            crate::mouse_tap::request_accessibility();
+        } else {
+            open_accessibility_settings(app);
+        }
+    }
+    accessibility_name()
+}
+
+#[tauri::command]
+pub fn open_accessibility_settings(app: AppHandle) {
+    if cfg!(target_os = "macos") {
+        let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
         if let Err(e) = app.opener().open_url(url, None::<&str>) {
             log::error!("cannot open System Settings: {e}");
         }
@@ -212,6 +295,14 @@ pub async fn check_ffmpeg() -> FfmpegStatus {
             path: None,
             install_command: ffmpeg::install_command(platform()).into(),
         })
+}
+
+/// Open a terminal that installs ffmpeg. Onboarding then checks again.
+#[tauri::command]
+pub async fn install_ffmpeg() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(ffmpeg::open_install_terminal)
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

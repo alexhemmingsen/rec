@@ -109,9 +109,20 @@ function WaitFor($what, $timeout, [scriptblock]$cond) {
 function Wins { [E2E]::Windows($proc.Id) | ForEach-Object { $p = $_ -split ' ', 5; [pscustomobject]@{ X = [int]$p[0]; Y = [int]$p[1]; W = [int]$p[2]; H = [int]$p[3]; Title = $p[4] } } }
 function Overlay { Wins | Where-Object { $_.Title -eq 'Rec selection' } | Select-Object -First 1 }
 $scale = [E2E]::Scale()
-$pillW = [math]::Round(168 * $scale); $pillH = [math]::Round(40 * $scale)
+# The Stop pill's window: the pill plus room for its shadow.
+$pillW = [math]::Round(340 * $scale); $pillH = [math]::Round(76 * $scale)
 function Pill { Wins | Where-Object { [math]::Abs($_.W - $pillW) -le 2 -and [math]::Abs($_.H - $pillH) -le 2 } | Select-Object -First 1 }
 function Clip { try { (Get-Clipboard -Raw) } catch { "" } }
+# Screenshots of each step for people to look at (REC_E2E_SHOTS = a folder).
+function Snap($name) {
+    if (-not $env:REC_E2E_SHOTS) { return }
+    New-Item -ItemType Directory -Force $env:REC_E2E_SHOTS | Out-Null
+    Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+    $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $img = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+    [System.Drawing.Graphics]::FromImage($img).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+    $img.Save((Join-Path $env:REC_E2E_SHOTS "$name.png"))
+}
 function Shortcut { [E2E]::Keys(0x11, 0x10, 0x35) } # Ctrl+Shift+5
 
 $sw = [E2E]::ScreenW(); $sh = [E2E]::ScreenH()
@@ -126,6 +137,8 @@ Start-Sleep 3
 # 1 + 2: the shortcut shows the overlay; Esc cancels.
 Shortcut
 WaitFor "the selection overlay after the shortcut" 8 { $null -ne (Overlay) }
+Start-Sleep -Milliseconds 300
+Snap "01-after-shortcut"
 $o = Overlay
 if ($o.X -eq 0 -and $o.Y -eq 0 -and $o.W -eq $sw -and $o.H -eq $sh) { Ok "the overlay covers the screen" } else { Fail "overlay at $($o.X),$($o.Y) $($o.W)x$($o.H)" }
 Start-Sleep -Milliseconds 500
@@ -140,14 +153,18 @@ Start-Sleep -Milliseconds 500
 $x1 = [int](160 * $scale); $y1 = [int](140 * $scale); $x2 = [int](560 * $scale); $y2 = [int](440 * $scale)
 [E2E]::Drag($x1, $y1, $x2, $y2)
 WaitFor "the Stop pill" 10 { $null -ne (Pill) }
-if ($null -eq (Overlay)) { Ok "the overlay is gone while recording" } else { Fail "overlay still visible" }
+if ($null -ne (Overlay)) { Ok "the overlay stays up as a frame while recording" } else { Fail "the frame is missing" }
+Start-Sleep -Milliseconds 300
+Snap "02-recording"
 $p = Pill
 Write-Host "[e2e] pill at $($p.X),$($p.Y) $($p.W)x$($p.H); region $x1,$y1-$x2,$y2"
-if ($p.X + $p.W -le $x1 -or $p.X -ge $x2 -or $p.Y + $p.H -le $y1 -or $p.Y -ge $y2) { Ok "the pill sits outside the region" } else { Fail "the pill overlaps the region" }
+if ([math]::Abs($p.X + $p.W / 2 - $sw / 2) -le 3 -and [math]::Abs($p.Y - [math]::Round(28 * $scale)) -le 3) { Ok "the pill is at the top centre of the screen" } else { Fail "the pill isn't at the top centre" }
 Start-Sleep 2.5
 [E2E]::Click($p.X + [int]($p.W / 2), $p.Y + [int]($p.H / 2))
 WaitFor "an .mp4 path on the clipboard" 15 { (Clip).Trim('"').EndsWith(".mp4") }
+Snap "03-path-copied"
 $file = (Clip).Trim().Trim('"')
+if ($env:REC_E2E_SHOTS) { Copy-Item $file $env:REC_E2E_SHOTS -ErrorAction SilentlyContinue }
 Write-Host "[e2e] clipboard: $file"
 if ([System.IO.Path]::IsPathRooted($file)) { Ok "the path is absolute" } else { Fail "not absolute" }
 if ((Split-Path $file -Leaf) -match '^rec-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(-\d+)?\.mp4$') { Ok "the file name matches rec-YYYY-MM-DD-HH-MM-SS.mp4" } else { Fail "bad name" }
@@ -160,14 +177,18 @@ if ($info -contains "width=$ew" -and $info -contains "height=$eh") { Ok "the vid
 $dur = [double](($info | Where-Object { $_ -like "duration=*" }) -replace "duration=", "")
 if ($dur -gt 1.8 -and $dur -lt 8) { Ok "the length matches the recording ($dur s)" } else { Fail "duration $dur" }
 WaitFor "the pill to go away" 8 { $null -eq (Pill) }
+WaitFor "the frame to go away" 5 { $null -eq (Overlay) }
 
-# 4: a click without dragging cancels.
+# 4: a click without dragging doesn't cancel; only Esc does.
 Set-Clipboard -Value " "
 Shortcut
 WaitFor "the overlay for the click test" 8 { $null -ne (Overlay) }
 Start-Sleep -Milliseconds 500
 [E2E]::Click([int]($sw / 2), [int]($sh / 2))
-WaitFor "a click to cancel" 5 { $null -eq (Overlay) }
+Start-Sleep 1
+if ($null -ne (Overlay)) { Ok "a click doesn't cancel the selection" } else { Fail "a click cancelled the selection" }
+[E2E]::Keys(0x1B)
+WaitFor "Esc to cancel after the click" 5 { $null -eq (Overlay) }
 Start-Sleep 1
 if ($null -eq (Pill) -and (Clip).Trim() -eq "") { Ok "nothing was recorded" } else { Fail "something was recorded" }
 

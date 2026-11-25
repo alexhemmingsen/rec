@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, errorText, type AppInfo, type FfmpegStatus, type HistoryItem } from "../lib/api";
+import { api, errorText, type AppInfo, type HistoryItem } from "../lib/api";
 import { ShortcutRecorder } from "../components/ShortcutRecorder";
 import { Keys } from "../components/Keys";
-import { PermissionStatus } from "./PermissionStatus";
+import { PermissionRow } from "./PermissionStatus";
+import { FfmpegRow, useFfmpeg } from "./FfmpegRow";
 import iconUrl from "../../assets/icon.png";
+import checkIcon from "../assets/icons/check.svg";
 
 const STEP_KEY = "rec.onboarding.step";
 const STEPS = 5;
@@ -78,7 +80,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
         ready to paste into Claude Code, Codex, Cursor or any other agent.
       </p>
       <div className="ob-actions">
-        <button type="button" className="btn primary large" onClick={onNext}>
+        <button type="button" className="button primary" onClick={onNext}>
           Get started
         </button>
       </div>
@@ -87,20 +89,24 @@ function Welcome({ onNext }: { onNext: () => void }) {
 }
 
 function PermissionStep({ info, onInfo, onNext }: { info: AppInfo; onInfo: (i: AppInfo) => void; onNext: () => void }) {
-  const ready = info.permission !== "notGranted" || !info.recordingSupported;
+  const ready =
+    !info.recordingSupported || (info.permission !== "notGranted" && info.accessibility !== "notGranted");
   return (
-    <div className="ob-card">
-      <h1>Allow screen recording</h1>
+    <div className="ob-card wide">
+      <h1>Allow access</h1>
       <p className="lead">
         {info.platform === "macos"
-          ? "macOS asks before any app can record the screen. Rec only records the area you select, and only while the Stop button is showing."
+          ? "Screen recording lets Rec record the box you drag. Accessibility lets you keep using your Mac after the shortcut, until you start dragging."
           : "Your system doesn't need extra permission for Rec."}
       </p>
-      <div className="card ob-panel">
-        <PermissionStatus info={info} onInfo={onInfo} />
+      <div className="ob-panel">
+        <div className="group">
+          <PermissionRow kind="screen" info={info} onInfo={onInfo} />
+          {info.platform === "macos" && <PermissionRow kind="accessibility" info={info} onInfo={onInfo} />}
+        </div>
       </div>
       <div className="ob-actions">
-        <button type="button" className="btn primary large" disabled={!ready} onClick={onNext}>
+        <button type="button" className="button primary" disabled={!ready} onClick={onNext}>
           Continue
         </button>
         {!ready && (
@@ -136,7 +142,7 @@ function ShortcutStep({ info, onInfo, onNext }: { info: AppInfo; onInfo: (i: App
         <label className="checkbox">
           <input type="checkbox" checked={openAtLogin} onChange={(e) => setOpenAtLogin(e.target.checked)} />
           <span>
-            <strong>Open at login</strong>
+            <strong>Launch Rec when starting device</strong>
             <span className="row-hint" style={{ display: "block" }}>
               Rec starts in the background, so the shortcut always works.
             </span>
@@ -145,7 +151,7 @@ function ShortcutStep({ info, onInfo, onNext }: { info: AppInfo; onInfo: (i: App
         {error && <p className="error-text">{error}</p>}
       </div>
       <div className="ob-actions">
-        <button type="button" className="btn primary large" onClick={finish}>
+        <button type="button" className="button primary" onClick={finish}>
           Continue
         </button>
       </div>
@@ -154,67 +160,26 @@ function ShortcutStep({ info, onInfo, onNext }: { info: AppInfo; onInfo: (i: App
 }
 
 function FfmpegStep({ onNext }: { onNext: () => void }) {
-  const [status, setStatus] = useState<FfmpegStatus | null>(null);
-  const [copied, setCopied] = useState(false);
-  const check = () => {
-    setStatus(null);
-    api.checkFfmpeg().then(setStatus).catch(() => setStatus({ found: false, path: null, installCommand: "brew install ffmpeg" }));
-  };
-  useEffect(check, []);
-
+  const ffmpeg = useFfmpeg();
   return (
-    <div className="ob-card">
+    <div className="ob-card wide">
       <h1>Help your agent read video</h1>
       <p className="lead">
         Agents read recordings with a video tool. We suggest ffmpeg, but any tool your agent likes works.
       </p>
-      <div className="card ob-panel" style={{ padding: 16 }}>
-        {status === null ? (
-          <span className="waiting">Checking for ffmpeg…</span>
-        ) : status.found ? (
-          <div>
-            <span className="status ok">ffmpeg is installed</span>
-            <p className="path" style={{ marginTop: 6 }}>
-              {status.path}
-            </p>
-          </div>
-        ) : (
-          <div>
-            <p style={{ marginBottom: 10 }}>ffmpeg isn't installed. Paste this into a terminal:</p>
-            <div className="command">
-              <code>{status.installCommand}</code>
-              <button
-                type="button"
-                className="btn"
-                onClick={() =>
-                  api.copyText(status.installCommand).then(() => {
-                    setCopied(true);
-                    window.setTimeout(() => setCopied(false), 1500);
-                  })
-                }
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-            <p className="row-hint" style={{ marginTop: 8 }}>
-              …or use any tool you like.
-            </p>
-          </div>
-        )}
+      <div className="ob-panel">
+        <div className="group">
+          <FfmpegRow ffmpeg={ffmpeg} />
+        </div>
+        {ffmpeg.error && <p className="error-text">{ffmpeg.error}</p>}
       </div>
       <div className="ob-actions">
-        {status && !status.found ? (
-          <>
-            <button type="button" className="btn primary large" onClick={check}>
-              Check again
-            </button>
-            <button type="button" className="btn ghost" onClick={onNext}>
-              Skip
-            </button>
-          </>
-        ) : (
-          <button type="button" className="btn primary large" disabled={status === null} onClick={onNext}>
-            Continue
+        <button type="button" className="button primary" disabled={!ffmpeg.found} onClick={onNext}>
+          Continue
+        </button>
+        {!ffmpeg.found && (
+          <button type="button" className="button ghost" onClick={onNext}>
+            I use another tool
           </button>
         )}
       </div>
@@ -233,9 +198,9 @@ function TryItStep({ info, onDone }: { info: AppInfo; onDone: () => void }) {
 
   if (result) {
     return (
-      <div className="ob-card">
+      <div className="ob-card wide">
         <div className="success-mark" aria-hidden>
-          ✓
+          <span className="success-check" style={{ "--icon": `url("${checkIcon}")` } as CSSProperties} />
         </div>
         <h1>Copied! Paste it anywhere.</h1>
         <p className="lead">The path to your recording is on the clipboard:</p>
@@ -243,7 +208,7 @@ function TryItStep({ info, onDone }: { info: AppInfo; onDone: () => void }) {
           <code>{result.path}</code>
         </div>
         <div className="ob-actions">
-          <button type="button" className="btn primary large" onClick={onDone}>
+          <button type="button" className="button primary" onClick={onDone}>
             Done
           </button>
         </div>
@@ -254,7 +219,10 @@ function TryItStep({ info, onDone }: { info: AppInfo; onDone: () => void }) {
   return (
     <div className="ob-card">
       <h1>Try it now</h1>
-      <p className="lead">Press your shortcut, drag a box over anything, then click Stop.</p>
+      <p className="lead">
+        Press your shortcut, drag a box over anything, then click Stop or press{" "}
+        <Keys shortcut={info.stopShortcut} platform={info.platform} />.
+      </p>
       <div style={{ marginBottom: 26 }}>
         <Keys shortcut={info.shortcut} platform={info.platform} large />
       </div>

@@ -10,12 +10,16 @@ export interface AppInfo {
   platform: Platform;
   version: string;
   shortcut: string;
+  /** The keys that stop a recording: the start shortcut unless changed. */
+  stopShortcut: string;
   saveDir: string;
   saveDirIsDefault: boolean;
   checkForUpdates: boolean;
   onboardingComplete: boolean;
   openAtLogin: boolean;
   permission: Permission;
+  /** macOS Accessibility: keep using your apps after the shortcut; only a drag selects. */
+  accessibility: Permission;
   recordingSupported: boolean;
   phase: Phase;
 }
@@ -51,6 +55,7 @@ export interface RecordingError {
 export const api = {
   appInfo: () => invoke<AppInfo>("get_app_info"),
   setShortcut: (accelerator: string) => invoke<AppInfo>("set_shortcut", { accelerator }),
+  setStopShortcut: (accelerator: string) => invoke<AppInfo>("set_stop_shortcut", { accelerator }),
   setShortcutSuspended: (suspended: boolean) => invoke<void>("set_shortcut_suspended", { suspended }),
   chooseSaveDir: () => invoke<AppInfo>("choose_save_dir"),
   resetSaveDir: () => invoke<AppInfo>("reset_save_dir"),
@@ -60,8 +65,12 @@ export const api = {
   permissionStatus: () => invoke<Permission>("permission_status"),
   requestScreenPermission: () => invoke<Permission>("request_screen_permission"),
   openPermissionSettings: () => invoke<void>("open_permission_settings"),
+  accessibilityStatus: () => invoke<Permission>("accessibility_status"),
+  requestAccessibility: () => invoke<Permission>("request_accessibility"),
+  openAccessibilitySettings: () => invoke<void>("open_accessibility_settings"),
   relaunch: () => invoke<void>("relaunch"),
   checkFfmpeg: () => invoke<FfmpegStatus>("check_ffmpeg"),
+  installFfmpeg: () => invoke<void>("install_ffmpeg"),
   copyText: (text: string) => invoke<void>("copy_text", { text }),
   listHistory: () => invoke<HistoryItem[]>("list_history"),
   copyRecordingPath: (id: string) => invoke<void>("copy_recording_path", { id }),

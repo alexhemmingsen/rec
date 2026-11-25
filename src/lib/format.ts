@@ -37,3 +37,28 @@ export function tildify(path: string): string {
   const m = /^(\/Users\/[^/]+|\/home\/[^/]+)(\/.*)?$/.exec(path);
   return m ? `~${m[2] ?? ""}` : path;
 }
+
+/** Recording length for History: "12 sec", "1:03 min", "1:02:03". */
+export function formatLength(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds));
+  if (s < 60) return `${s} sec`;
+  if (s < 3600) return `${formatDuration(s)} min`;
+  return formatDuration(s);
+}
+
+/** Compact file size for History: "812KB", "4.2MB". */
+export function formatSize(bytes: number | null | undefined): string {
+  return formatBytes(bytes).replace(" ", "");
+}
+
+/** The folder a file is in ("/Users/me/Downloads/a.mp4" → "/Users/me/Downloads"). */
+export function folderOf(path: string): string {
+  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return i > 0 ? path.slice(0, i) : path;
+}
+
+/** The last part of a path ("/Users/me/Downloads/a.mp4" → "a.mp4"). */
+export function fileName(path: string): string {
+  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return i >= 0 ? path.slice(i + 1) : path;
+}
