@@ -113,7 +113,9 @@ let display = CGDisplayBounds(CGMainDisplayID())
 let mode = CGDisplayCopyDisplayMode(CGMainDisplayID())!
 let scale = Double(mode.pixelWidth) / Double(display.width)
 
-func overlayVisible() -> Bool { recWindows().contains { $0.layer == 1000 && $0.onscreen } }
+/// Rec's selection overlay sits at NSPopUpMenuWindowLevel.
+let overlayLayer = 101
+func overlayVisible() -> Bool { recWindows().contains { $0.layer == overlayLayer && $0.onscreen } }
 func pill() -> Win? {
     recWindows().first { $0.onscreen && abs($0.bounds.width - 168) < 1 && abs($0.bounds.height - 40) < 1 }
 }
@@ -182,7 +184,7 @@ pause(2)
 // 1 + 2: shortcut shows the overlay, Esc cancels.
 pressShortcut()
 waitFor("the selection overlay after the shortcut", timeout: 5, overlayVisible)
-let overlay = recWindows().first { $0.layer == 1000 && $0.onscreen && $0.bounds.origin == display.origin }
+let overlay = recWindows().first { $0.layer == overlayLayer && $0.onscreen && $0.bounds.origin == display.origin }
 check(overlay != nil && overlay!.bounds.size == display.size, "the overlay covers the whole main display")
 check(!recWindows().contains { $0.onscreen && $0.layer == 0 && $0.bounds.width >= 700 }, "the main window got out of the way")
 pause(0.5)
