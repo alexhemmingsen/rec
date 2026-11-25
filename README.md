@@ -63,7 +63,7 @@ One codebase ([Tauri 2](https://tauri.app) + Rust), with each platform's native 
 
 ## Tested end to end
 
-CI drives the real app on all three platforms: it presses the shortcut, checks the overlay and Esc, drags a region, clicks Stop, reads the clipboard and inspects the MP4 (codec, size, length). On macOS and Windows it also records the whole screen and checks that the Stop pill isn't in the video. See `e2e/`.
+CI drives the real app on all three platforms: it presses the shortcut, checks the overlay and Esc, drags a region, clicks Stop, reads the clipboard and inspects the MP4 (codec, size, length). On Windows it also records the whole screen and checks that the Stop pill isn't in the video. GitHub's virtual Macs drop scripted mouse drags, so on macOS CI covers the shortcut, overlay, Esc and real screen capture, and the drag-to-record flow is checked on a real Mac. See `e2e/`.
 
 ## Building from source
 

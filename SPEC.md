@@ -69,7 +69,7 @@ any other agent. The agent reads the video with ffmpeg or any tool it likes.
 | --- | --- |
 | Recording flow, app, onboarding, History | Done on macOS, Windows and Linux |
 | Capture | macOS: ScreenCaptureKit + AVFoundation. Windows: Windows Graphics Capture + Media Foundation. Linux: GStreamer (X11 directly; Wayland through the ScreenCast portal) |
-| End-to-end tests | CI drives the real app on all three platforms (`e2e/`) |
+| End-to-end tests | CI drives the real app on Windows and Linux; on macOS CI covers shortcut, overlay, Esc and live capture (its VMs drop scripted drags), and the full flow was verified on a real Mac (2026-11-25) |
 | Update check and in-app update | Done (GitHub Releases, signed updater artifacts for all three platforms) |
 | Self-signed macOS release signing | Done (`scripts/release-macos.sh`) |
 | Apple Developer ID + notarization | Needs the $99/yr Apple account. The release already notarizes and staples once the certificate and an App Store Connect API key are added as secrets (`REC_SIGN_P12_*`, `REC_NOTARY_API_KEY_JSON`) |
