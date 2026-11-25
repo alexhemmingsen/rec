@@ -2,7 +2,8 @@
 # Builds a signed macOS release of Rec into ./release:
 #   Rec_<version>_aarch64.dmg        the download
 #   Rec.app.tar.gz (+ .sig)          what the in-app updater installs
-#   latest.json                      what the in-app updater checks
+# scripts/latest-json.mjs turns the signed artifacts of all platforms into
+# the updater's latest.json.
 #
 # Signing (all optional; without them the app is ad-hoc signed):
 #   REC_SIGN_P12, REC_SIGN_P12_PASSWORD   code signing certificate (.p12).
@@ -12,15 +13,12 @@
 #   RCODESIGN                             path to rcodesign (default: rcodesign)
 #   TAURI_SIGNING_PRIVATE_KEY_PATH, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 #       updater signing key (minisign); its public key is in tauri.conf.json.
-#   REC_REPO                              owner/name for download URLs
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-REPO=${REC_REPO:-alexhemmingsen/rec}
 RCODESIGN=${RCODESIGN:-rcodesign}
 OUT=release
-TAG="v$VERSION"
 
 echo "==> Building Rec $VERSION"
 pnpm tauri build --bundles app
@@ -53,25 +51,8 @@ if [[ -n "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" || -n "${TAURI_SIGNING_PRIVATE_KE
   else
     pnpm --silent tauri signer sign "$OUT/Rec.app.tar.gz" >/dev/null
   fi
-  SIG=$(cat "$OUT/Rec.app.tar.gz.sig")
-  NOTES=${REC_RELEASE_NOTES:-"See https://github.com/$REPO/releases/tag/$TAG"}
-  VERSION="$VERSION" SIG="$SIG" REPO="$REPO" TAG="$TAG" NOTES="$NOTES" node -e '
-    const e = process.env;
-    const doc = {
-      version: e.VERSION,
-      notes: e.NOTES,
-      pub_date: new Date().toISOString(),
-      platforms: {
-        "darwin-aarch64": {
-          signature: e.SIG,
-          url: `https://github.com/${e.REPO}/releases/download/${e.TAG}/Rec.app.tar.gz`,
-        },
-      },
-    };
-    require("fs").writeFileSync("release/latest.json", JSON.stringify(doc, null, 2) + "\n");
-  '
 else
-  echo "==> No updater key given: skipping the signature and latest.json"
+  echo "==> No updater key given: the updater archive is unsigned"
 fi
 
 rm -rf "$OUT/stage" "$OUT/dmg"

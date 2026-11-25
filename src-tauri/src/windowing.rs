@@ -5,7 +5,7 @@ use rec_capture::{DisplayInfo, Rect};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 #[cfg(not(target_os = "macos"))]
-use tauri::{LogicalPosition, LogicalSize};
+use tauri::{PhysicalPosition, PhysicalSize};
 
 use crate::layout;
 
@@ -45,14 +45,18 @@ fn floating_builder<'a>(
         .shadow(false)
         .visible(false)
         .focused(false)
-        .visible_on_all_workspaces(true);
+        .visible_on_all_workspaces(true)
+        // Keeps the window out of screen captures on Windows
+        // (WDA_EXCLUDEFROMCAPTURE). macOS excludes Rec's windows by app.
+        .content_protected(true);
     #[cfg(target_os = "macos")]
     let builder = builder.accept_first_mouse(true);
     builder
 }
 
-/// Place a floating window exactly at `frame` (global, top-left origin).
-fn place(app: &AppHandle, window: &WebviewWindow, frame: Rect, level: isize) {
+/// Place a floating window exactly at `frame` (global logical coordinates,
+/// top-left origin), which is `pixels` in physical pixels.
+fn place(app: &AppHandle, window: &WebviewWindow, frame: Rect, pixels: Rect, level: isize) {
     #[cfg(target_os = "macos")]
     {
         let w = window.clone();
@@ -62,11 +66,21 @@ fn place(app: &AppHandle, window: &WebviewWindow, frame: Rect, level: isize) {
             }
         });
     }
+    #[cfg(target_os = "macos")]
+    let _ = pixels;
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (app, level);
-        let _ = window.set_position(LogicalPosition::new(frame.x, frame.y));
-        let _ = window.set_size(LogicalSize::new(frame.width, frame.height));
+        // Physical pixels: logical positions are ambiguous across monitors
+        // with different scale factors.
+        let _ = (app, level, frame);
+        let _ = window.set_position(PhysicalPosition::new(
+            pixels.x.round() as i32,
+            pixels.y.round() as i32,
+        ));
+        let _ = window.set_size(PhysicalSize::new(
+            pixels.width.round() as u32,
+            pixels.height.round() as u32,
+        ));
     }
 }
 
@@ -94,7 +108,7 @@ pub fn prepare_overlays(app: &AppHandle, displays: &[DisplayInfo]) -> tauri::Res
                 .position(d.frame.x, d.frame.y)
                 .build()?,
         };
-        place(app, &window, d.frame, overlay_level());
+        place(app, &window, d.frame, d.pixel_frame, overlay_level());
     }
     Ok(())
 }
@@ -150,6 +164,15 @@ fn display_under_mouse(app: &AppHandle, displays: &[DisplayInfo]) -> Option<u32>
             return Some(d.id);
         }
     }
+    #[cfg(not(target_os = "macos"))]
+    if let Ok(p) = app.cursor_position()
+        && let Some(d) = displays.iter().find(|d| {
+            let f = d.pixel_frame;
+            p.x >= f.x && p.x < f.x + f.width && p.y >= f.y && p.y < f.y + f.height
+        })
+    {
+        return Some(d.id);
+    }
     let _ = app;
     displays
         .iter()
@@ -185,20 +208,22 @@ pub fn ensure_pill(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 pub fn show_pill(
     app: &AppHandle,
     region_global: Rect,
-    display: Rect,
+    display: &DisplayInfo,
     started_at_ms: i64,
 ) -> tauri::Result<()> {
     let pill = ensure_pill(app)?;
     let (x, y) = layout::pill_origin(
         region_global,
-        display,
+        display.frame,
         layout::PILL_WIDTH,
         layout::PILL_HEIGHT,
     );
+    let frame = Rect::new(x, y, layout::PILL_WIDTH, layout::PILL_HEIGHT);
     place(
         app,
         &pill,
-        Rect::new(x, y, layout::PILL_WIDTH, layout::PILL_HEIGHT),
+        frame,
+        layout::to_pixels(frame, display),
         pill_level(),
     );
     let _ = app.emit_to(PILL, "pill-started", PillStarted { started_at_ms });

@@ -82,6 +82,12 @@ pub fn displays() -> Vec<DisplayInfo> {
             DisplayInfo {
                 id,
                 frame: Rect::new(b.origin.x, b.origin.y, b.size.width, b.size.height),
+                pixel_frame: Rect::new(
+                    b.origin.x * scale,
+                    b.origin.y * scale,
+                    b.size.width * scale,
+                    b.size.height * scale,
+                ),
                 scale_factor: scale,
                 is_main: id == main,
             }

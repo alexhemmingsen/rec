@@ -3,7 +3,7 @@
 //! All rectangles are in global logical coordinates with the origin at the
 //! top-left of the main display and y growing downwards.
 
-use rec_capture::Rect;
+use rec_capture::{DisplayInfo, Rect};
 
 pub const PILL_WIDTH: f64 = 168.0;
 pub const PILL_HEIGHT: f64 = 40.0;
@@ -45,9 +45,34 @@ pub fn to_global(region: Rect, display: Rect) -> Rect {
     )
 }
 
+/// A global logical rect on `display`, in global physical pixels.
+pub fn to_pixels(rect: Rect, display: &DisplayInfo) -> Rect {
+    let s = display.scale_factor;
+    Rect::new(
+        display.pixel_frame.x + (rect.x - display.frame.x) * s,
+        display.pixel_frame.y + (rect.y - display.frame.y) * s,
+        rect.width * s,
+        rect.height * s,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn converts_to_pixels_on_a_scaled_secondary_display() {
+        // A 150% display to the right of a 100% 1920x1080 one.
+        let display = DisplayInfo {
+            id: 2,
+            frame: Rect::new(1280.0, 0.0, 1706.67, 960.0),
+            pixel_frame: Rect::new(1920.0, 0.0, 2560.0, 1440.0),
+            scale_factor: 1.5,
+            is_main: false,
+        };
+        let r = to_pixels(Rect::new(1380.0, 100.0, 168.0, 40.0), &display);
+        assert_eq!(r, Rect::new(2070.0, 150.0, 252.0, 60.0));
+    }
 
     const DISPLAY: Rect = Rect {
         x: 0.0,

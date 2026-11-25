@@ -5,8 +5,10 @@
 //!
 //! - macOS: ScreenCaptureKit for frames, AVAssetWriter (VideoToolbox) for
 //!   hardware H.264 encoding.
-//! - Windows and Linux: not implemented yet (Rec ships macOS first). Calls
-//!   return [`CaptureError::Unsupported`].
+//! - Windows: Windows Graphics Capture for frames, Media Foundation for
+//!   H.264.
+//! - Linux: GStreamer, with `ximagesrc` on X11 and the xdg-desktop-portal
+//!   ScreenCast API (PipeWire) on Wayland.
 //!
 //! The platform-independent parts (geometry, output sizing) live here so they
 //! can be unit tested everywhere.
@@ -19,13 +21,28 @@ mod macos;
 #[cfg(target_os = "macos")]
 use macos as platform;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+use windows as platform;
+
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux as platform;
+
+#[cfg(any(target_os = "linux", test))]
+mod gst_pipeline;
+
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
 mod unsupported;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
 use unsupported as platform;
 
 #[cfg(target_os = "macos")]
 pub use macos::writer::Mp4Writer;
+#[cfg(windows)]
+pub use windows::Mp4Writer;
 
 /// Largest frame (in pixels) H.264 level 5.2 can encode: 36 864 macroblocks
 /// of 16x16, i.e. 4096x2304. Bigger regions are scaled down to fit.
@@ -72,6 +89,9 @@ pub struct DisplayInfo {
     /// Frame in global logical coordinates, origin at the top-left of the
     /// main display, y growing downwards.
     pub frame: Rect,
+    /// The same frame in physical pixels (global). Windows and Linux place
+    /// windows with these so mixed-DPI setups line up exactly.
+    pub pixel_frame: Rect,
     /// Physical pixels per logical point (2.0 on Retina).
     pub scale_factor: f64,
     pub is_main: bool,

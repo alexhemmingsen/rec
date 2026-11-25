@@ -63,7 +63,7 @@ fn info(app: &AppHandle) -> AppInfo {
         onboarding_complete: settings.onboarding_complete,
         open_at_login: app.autolaunch().is_enabled().unwrap_or(false),
         permission: permission_name(),
-        recording_supported: cfg!(target_os = "macos"),
+        recording_supported: cfg!(any(target_os = "macos", windows, target_os = "linux")),
         phase: state.phase.lock().unwrap().name(),
     }
 }

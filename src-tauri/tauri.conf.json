@@ -30,13 +30,15 @@
       "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/thumbnails/*"]
+        "scope": [
+          "$APPDATA/thumbnails/*"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": "all",
     "category": "Utility",
     "shortDescription": "Record a screen region, paste the file path into your AI agent.",
     "longDescription": "Press a shortcut, drag a box and the recording starts. Click Stop and the video's path is on your clipboard, ready to paste into Claude Code, Codex, Cursor or any other agent. Everything stays on your computer.",
@@ -50,12 +52,41 @@
     ],
     "macOS": {
       "minimumSystemVersion": "14.0"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-plugins-ugly",
+          "gstreamer1.0-x",
+          "gstreamer1.0-pipewire"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "gstreamer1-plugins-base",
+          "gstreamer1-plugins-good",
+          "gstreamer1-plugin-openh264",
+          "pipewire-gstreamer"
+        ]
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
     }
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM4QkJCNkUyQUZGODAzOTAKUldTUUEvaXY0cmE3T1A4ald0c1g4OW4zS3p0Qm9YdWkwakhzQXoxZEZEQjYvNFJPc0xtVkZpMDkK",
-      "endpoints": ["https://github.com/alexhemmingsen/rec/releases/latest/download/latest.json"]
+      "endpoints": [
+        "https://github.com/alexhemmingsen/rec/releases/latest/download/latest.json"
+      ]
     }
   }
 }

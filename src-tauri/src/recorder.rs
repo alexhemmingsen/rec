@@ -286,7 +286,7 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
             // Give the keyboard back to the app being recorded.
             reactivate_previous(app);
             let global = layout::to_global(region, display.frame);
-            if let Err(e) = windowing::show_pill(app, global, display.frame, started_at_ms) {
+            if let Err(e) = windowing::show_pill(app, global, &display, started_at_ms) {
                 log::error!("cannot show the Stop pill: {e}");
             }
             let _ = app.emit("phase-changed", "recording");

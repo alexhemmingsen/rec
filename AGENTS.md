@@ -47,7 +47,7 @@ Run the full build and test suite before every commit.
 - Screen capture needs Screen Recording permission for the *responsible*
   process: the terminal when you run from a shell, Rec.app when launched from
   Finder. The live capture test is `#[ignore]`d for that reason:
-  `cargo test -p rec-capture --test macos_live -- --ignored`.
+  `cargo test -p rec-capture --test live -- --ignored`.
 - Sleeping displays aren't "active"; `displays()` falls back to the online
   list.
 - AppKit calls must run on the main thread: use `app.run_on_main_thread`.

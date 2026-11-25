@@ -5,6 +5,8 @@ mod commands;
 mod ffmpeg;
 mod history;
 mod layout;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 mod naming;
@@ -23,6 +25,9 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use crate::history::History;
 use crate::recorder::{AppState, Phase, Restore};
 use crate::settings::{DEFAULT_SHORTCUT, Settings};
+
+#[cfg(target_os = "linux")]
+pub use linux::prefer_xwayland;
 
 /// Passed by "Open at login": start in the background without the window.
 pub const HIDDEN_ARG: &str = "--hidden";
@@ -74,6 +79,12 @@ pub fn run() {
                     settings.shortcut = DEFAULT_SHORTCUT.to_string();
                     let _ = settings.save(&settings_path);
                 }
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                let h = handle.clone();
+                linux::bind_portal_shortcut(&settings.shortcut, move || recorder::on_shortcut(&h));
             }
 
             let show_window =

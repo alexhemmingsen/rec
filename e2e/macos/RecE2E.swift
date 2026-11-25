@@ -210,8 +210,9 @@ let v1 = videoInfo(path1)
 log("video 1: \(v1.duration)s, \(v1.size)")
 check(v1.duration > 1.8 && v1.duration < 8, "the video lasts about as long as the recording (\(v1.duration)s)")
 let expectW = Double(Int(400 * scale) & ~1), expectH = Double(Int(300 * scale) & ~1)
-check(abs(v1.size.width - expectW) <= 2 && abs(v1.size.height - expectH) <= 2,
-      "the video has the region's size at full sharpness (\(v1.size) vs \(expectW)x\(expectH))")
+let widthOK: Bool = abs(Double(v1.size.width) - expectW) <= 2
+let heightOK: Bool = abs(Double(v1.size.height) - expectH) <= 2
+check(widthOK && heightOK, "the video has the region's size at full sharpness (\(v1.size) vs \(expectW)x\(expectH))")
 waitFor("the pill to go away after 'Path copied'", timeout: 6) { pill() == nil }
 
 // 4: a click without dragging cancels.
@@ -244,18 +245,22 @@ let img = pixels(frame(v2.asset, at: max(0, v2.duration - 0.6)))
 let sx = Double(img.width) / Double(display.width - 2), sy = Double(img.height) / Double(display.height - 2)
 let px0 = Int((p2.bounds.minX - display.minX - 1) * sx), py0 = Int((p2.bounds.minY - display.minY - 1) * sy)
 let px1 = Int((p2.bounds.maxX - display.minX - 1) * sx), py1 = Int((p2.bounds.maxY - display.minY - 1) * sy)
-var red = 0, total = 0, sum = 0
+var red = 0, total = 0
 for y in max(0, py0)..<min(img.height, py1) {
     for x in max(0, px0)..<min(img.width, px1) {
         let i = (y * img.width + x) * 4
-        let r = Int(img.data[i]), g = Int(img.data[i + 1]), b = Int(img.data[i + 2])
+        let r: Int = Int(img.data[i])
+        let g: Int = Int(img.data[i + 1])
+        let b: Int = Int(img.data[i + 2])
         total += 1
-        sum += r + g + b
         if r > 200 && g < 110 && b < 100 { red += 1 }
     }
 }
 var nonBlack = 0
-for i in stride(from: 0, to: img.data.count, by: 4 * 97) where Int(img.data[i]) + Int(img.data[i + 1]) + Int(img.data[i + 2]) > 30 { nonBlack += 1 }
+for i in stride(from: 0, to: img.data.count, by: 4 * 97) {
+    let brightness: Int = Int(img.data[i]) + Int(img.data[i + 1]) + Int(img.data[i + 2])
+    if brightness > 30 { nonBlack += 1 }
+}
 log("pill area in the video: \(total) px, \(red) stop-button red; frame has \(nonBlack) non-black samples")
 check(nonBlack > 50, "the video shows the screen (not a black frame)")
 check(total > 0 && red < max(4, total / 200), "the Stop pill is not in the video")
