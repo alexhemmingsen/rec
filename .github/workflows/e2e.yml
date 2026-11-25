@@ -73,11 +73,10 @@ jobs:
       - name: Live capture test (ScreenCaptureKit + encoder)
         run: '"$LIVE_TEST" --ignored --nocapture --test-threads=1'
       - name: End-to-end test
-        # Not blocking: GitHub's macOS VMs drop synthetic mouse drags (the
-        # system doesn't even register the scripted button release), so the
-        # drag step can't pass there. Shortcut, overlay, Esc and the live
-        # capture test above do run and must pass.
-        continue-on-error: true
+        # GitHub's macOS VMs drop system-routed mouse drags, so the driver
+        # delivers mouse events to Rec's process directly (REC_E2E_DIRECT).
+        env:
+          REC_E2E_DIRECT: "1"
         run: '"$RUNNER_TEMP/rec-e2e" "$PWD/target/release/bundle/macos/Rec.app"'
       - name: Diagnostics
         if: failure()

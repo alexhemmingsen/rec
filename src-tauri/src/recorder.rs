@@ -281,12 +281,33 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
         return Err(err.to_string());
     }
     let path = naming::unique_path(&dir, Local::now());
+    // Where the Stop pill will go, relative to the region, if it lands
+    // inside it (the region fills the screen).
+    let global = layout::to_global(region, display.frame);
+    let (px, py) = layout::pill_origin(
+        global,
+        display.frame,
+        layout::PILL_WIDTH,
+        layout::PILL_HEIGHT,
+    );
+    let pill = Rect::new(
+        px - global.x,
+        py - global.y,
+        layout::PILL_WIDTH,
+        layout::PILL_HEIGHT,
+    );
+    let exclude = (pill.x < region.width
+        && pill.y < region.height
+        && pill.x + pill.width > 0.0
+        && pill.y + pill.height > 0.0)
+        .then_some(pill);
     let request = RecordRequest {
         display_id,
         region,
         output: path.clone(),
         fps: FPS,
         show_cursor: true,
+        exclude,
     };
 
     log::info!(
@@ -305,7 +326,6 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
             drop(phase);
             // Give the keyboard back to the app being recorded.
             reactivate_previous(app);
-            let global = layout::to_global(region, display.frame);
             match windowing::show_pill(app, global, &display, started_at_ms) {
                 Ok(()) => log::info!("Stop pill shown"),
                 Err(e) => log::error!("cannot show the Stop pill: {e}"),

@@ -20,7 +20,7 @@ use gstreamer_app as gst_app;
 use crate::gst_pipeline::{self, PixelRect};
 use crate::{
     CaptureError, DisplayInfo, Frame, Permission, RecordRequest, RecordingSummary, Rect, Result,
-    output_dimensions, target_bitrate,
+    bgra_to_rgba_thumbnail, output_dimensions, target_bitrate,
 };
 
 const THUMBNAIL_MAX_WIDTH: u32 = 640;
@@ -210,6 +210,7 @@ pub struct Recording {
     width: u32,
     height: u32,
     thumbnail: Option<Frame>,
+    patch: Option<PathBuf>,
     _portal: Option<PortalSession>,
 }
 
@@ -217,7 +218,14 @@ pub struct Recording {
 // file descriptor and a thread handle.
 unsafe impl Send for Recording {}
 
-fn pull_thumbnail(sink: &gst_app::AppSink, timeout: Duration) -> Option<Frame> {
+/// The first full-size frame: tightly packed BGRA.
+struct FirstFrame {
+    width: u32,
+    height: u32,
+    bgra: Vec<u8>,
+}
+
+fn pull_first_frame(sink: &gst_app::AppSink, timeout: Duration) -> Option<FirstFrame> {
     let sample = sink.try_pull_sample(gst::ClockTime::from_nseconds(timeout.as_nanos() as u64))?;
     let caps = sample.caps()?;
     let s = caps.structure(0)?;
@@ -227,15 +235,36 @@ fn pull_thumbnail(sink: &gst_app::AppSink, timeout: Duration) -> Option<Frame> {
     let map = buffer.map_readable().ok()?;
     let data = map.as_slice();
     let stride = data.len() / height.max(1) as usize;
-    let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+    let row = width as usize * 4;
+    let mut bgra = Vec::with_capacity(row * height as usize);
     for y in 0..height as usize {
-        rgba.extend_from_slice(&data[y * stride..y * stride + width as usize * 4]);
+        bgra.extend_from_slice(data.get(y * stride..y * stride + row)?);
     }
-    Some(Frame {
+    Some(FirstFrame {
         width,
         height,
-        rgba,
+        bgra,
     })
+}
+
+/// Write `rect` of a BGRA frame as an RGBA PNG.
+fn write_patch(frame: &FirstFrame, rect: PixelRect, path: &std::path::Path) -> std::io::Result<()> {
+    let mut rgba = Vec::with_capacity((rect.width * rect.height * 4) as usize);
+    for y in rect.y..rect.y + rect.height {
+        for x in rect.x..rect.x + rect.width {
+            let i = ((y * frame.width + x) * 4) as usize;
+            let p = &frame.bgra[i..i + 4];
+            rgba.extend_from_slice(&[p[2], p[1], p[0], 255]);
+        }
+    }
+    let file = std::fs::File::create(path)?;
+    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), rect.width, rect.height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().map_err(std::io::Error::other)?;
+    writer
+        .write_image_data(&rgba)
+        .map_err(std::io::Error::other)
 }
 
 impl Recording {
@@ -314,17 +343,32 @@ impl Recording {
         if request.output.exists() {
             std::fs::remove_file(&request.output).map_err(gst_err)?;
         }
-        let (tw, th) = gst_pipeline::thumb_size(out_w, out_h, THUMBNAIL_MAX_WIDTH);
+        // Linux can't leave Rec's own Stop pill out of a capture, so when
+        // the pill sits inside the region, cover it with what was there
+        // before it appeared.
+        let cover = request.exclude.and_then(|e| {
+            gst_pipeline::exclude_pixels(
+                (e.x, e.y, e.width, e.height),
+                scale,
+                (w, h),
+                (out_w, out_h),
+            )
+        });
+        let can_cover = gst::ElementFactory::find("gdkpixbufoverlay").is_some();
+        if cover.is_some() && !can_cover {
+            log::warn!(
+                "gdkpixbufoverlay missing: the Stop pill may show in a full-screen recording"
+            );
+        }
         let description = gst_pipeline::pipeline(
             &source,
             request.fps,
             out_w,
             out_h,
+            cover.is_some() && can_cover,
             &encoder,
             parser,
             &request.output.to_string_lossy(),
-            tw,
-            th,
         );
         log::info!("pipeline: {description}");
         let pipeline = gst::parse::launch(&description)
@@ -353,19 +397,48 @@ impl Recording {
             }
         }
         log::info!("linux capture: playing, waiting for the first frame");
-        let thumbnail = pull_thumbnail(&sink, Duration::from_secs(3));
-        log::info!(
-            "linux capture: first frame {}",
-            if thumbnail.is_some() {
-                "received"
-            } else {
-                "missing"
-            }
-        );
-        if thumbnail.is_none() {
+        let first = pull_first_frame(&sink, Duration::from_secs(3));
+        // Only the first frame is needed; stop converting the rest.
+        if let Some(valve) = pipeline.by_name("firstframe") {
+            valve.set_property("drop", true);
+        }
+        let Some(first) = first else {
+            log::info!("linux capture: no first frame");
             let _ = pipeline.set_state(gst::State::Null);
             let _ = std::fs::remove_file(&request.output);
             return Err(CaptureError::NoFrames);
+        };
+        log::info!(
+            "linux capture: first frame {}x{}",
+            first.width,
+            first.height
+        );
+        let thumbnail = bgra_to_rgba_thumbnail(
+            &first.bgra,
+            first.width as usize,
+            first.height as usize,
+            first.width as usize * 4,
+            THUMBNAIL_MAX_WIDTH as usize,
+        );
+
+        let mut patch = None;
+        if let (Some(rect), Some(mask)) = (cover, pipeline.by_name("mask")) {
+            let rect = PixelRect {
+                width: rect.width.min(first.width.saturating_sub(rect.x)),
+                height: rect.height.min(first.height.saturating_sub(rect.y)),
+                ..rect
+            };
+            let path = std::env::temp_dir().join(format!("rec-cover-{}.png", std::process::id()));
+            match write_patch(&first, rect, &path) {
+                Ok(()) => {
+                    mask.set_property("offset-x", rect.x as i32);
+                    mask.set_property("offset-y", rect.y as i32);
+                    mask.set_property("location", path.to_string_lossy().to_string());
+                    log::info!("linux capture: covering the Stop pill at {rect:?}");
+                    patch = Some(path);
+                }
+                Err(e) => log::warn!("cannot cover the Stop pill: {e}"),
+            }
         }
 
         Ok(Recording {
@@ -375,6 +448,7 @@ impl Recording {
             width: out_w,
             height: out_h,
             thumbnail,
+            patch,
             _portal: portal,
         })
     }
@@ -392,6 +466,9 @@ impl Recording {
             &[gst::MessageType::Eos, gst::MessageType::Error],
         );
         let _ = self.pipeline.set_state(gst::State::Null);
+        if let Some(p) = &self.patch {
+            let _ = std::fs::remove_file(p);
+        }
         match msg.as_ref().map(|m| m.view()) {
             Some(gst::MessageView::Eos(_)) => {}
             Some(gst::MessageView::Error(e)) => {
@@ -416,5 +493,8 @@ impl Recording {
     pub fn cancel(self) {
         let _ = self.pipeline.set_state(gst::State::Null);
         let _ = std::fs::remove_file(&self.path);
+        if let Some(p) = &self.patch {
+            let _ = std::fs::remove_file(p);
+        }
     }
 }

@@ -31,6 +31,7 @@ fn records_a_region_of_the_main_display() {
         output: out.clone(),
         fps: 30,
         show_cursor: true,
+        exclude: None,
     })
     .unwrap();
     std::thread::sleep(Duration::from_millis(2000));

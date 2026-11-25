@@ -80,39 +80,62 @@ pub fn pipewire_source(
     )
 }
 
-/// The whole pipeline: source → 30 fps → output size → tee into the MP4
-/// encoder and a small RGBA appsink (named `thumb`) for the thumbnail.
+/// The whole pipeline: source → 30 fps → output size → an optional overlay
+/// (named `mask`, see [`exclude_pixels`]) → tee into the MP4 encoder and a
+/// full-size BGRA appsink (named `thumb`, behind a valve named `firstframe`)
+/// that hands over the first frame.
 #[allow(clippy::too_many_arguments)]
 pub fn pipeline(
     source: &str,
     fps: u32,
     out_width: u32,
     out_height: u32,
+    mask: bool,
     encoder: &str,
     parser: &str,
     path: &str,
-    thumb_width: u32,
-    thumb_height: u32,
 ) -> String {
+    let mask = if mask {
+        "! gdkpixbufoverlay name=mask "
+    } else {
+        ""
+    };
     format!(
         "{source} ! queue ! videoconvert ! videorate ! video/x-raw,framerate={fps}/1 \
-         ! videoscale ! video/x-raw,width={out_width},height={out_height},pixel-aspect-ratio=1/1 ! tee name=t \
+         ! videoscale ! video/x-raw,width={out_width},height={out_height},pixel-aspect-ratio=1/1 \
+         {mask}! tee name=t \
          t. ! queue ! videoconvert ! video/x-raw,format=I420 ! {encoder} ! {parser} \
          ! mp4mux faststart=true ! filesink location={} \
-         t. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! videoscale \
-         ! video/x-raw,format=RGBA,width={thumb_width},height={thumb_height} \
-         ! appsink name=thumb max-buffers=1 drop=true sync=false wait-on-eos=false",
+         t. ! queue leaky=downstream max-size-buffers=1 ! valve name=firstframe ! videoconvert \
+         ! video/x-raw,format=BGRA ! appsink name=thumb max-buffers=1 drop=true sync=false wait-on-eos=false",
         quote(path)
     )
 }
 
-/// Thumbnail size: at most `max_width` wide, aspect kept, at least 2x2.
-pub fn thumb_size(width: u32, height: u32, max_width: u32) -> (u32, u32) {
-    if width <= max_width {
-        return (width.max(2), height.max(2));
-    }
-    let h = (height as u64 * max_width as u64 / width as u64) as u32;
-    (max_width, h.max(2))
+/// The area to cover, in output pixels: `exclude` is relative to a region
+/// of `region_width` x `region_height` logical units, scaled by `scale` to
+/// capture pixels and then to the `out_width` x `out_height` video. Grown
+/// by a few pixels for anti-aliasing and clamped to the frame.
+pub fn exclude_pixels(
+    exclude: (f64, f64, f64, f64),
+    scale: f64,
+    capture: (u32, u32),
+    out: (u32, u32),
+) -> Option<PixelRect> {
+    const MARGIN: f64 = 3.0;
+    let (ex, ey, ew, eh) = exclude;
+    let sx = scale * out.0 as f64 / capture.0.max(1) as f64;
+    let sy = scale * out.1 as f64 / capture.1.max(1) as f64;
+    let x0 = (ex * sx - MARGIN).floor().max(0.0);
+    let y0 = (ey * sy - MARGIN).floor().max(0.0);
+    let x1 = ((ex + ew) * sx + MARGIN).ceil().min(out.0 as f64);
+    let y1 = ((ey + eh) * sy + MARGIN).ceil().min(out.1 as f64);
+    (x1 - x0 >= 1.0 && y1 - y0 >= 1.0).then_some(PixelRect {
+        x: x0 as u32,
+        y: y0 as u32,
+        width: (x1 - x0) as u32,
+        height: (y1 - y0) as u32,
+    })
 }
 
 /// Quote a value for `gst_parse_launch`.
@@ -191,11 +214,10 @@ mod tests {
             30,
             800,
             600,
+            true,
             "x264enc",
             "h264parse",
             "/tmp/My Videos/rec \"1\".mp4",
-            320,
-            240,
         );
         assert!(p.contains("framerate=30/1"));
         assert!(p.contains("width=800,height=600"));
@@ -204,6 +226,41 @@ mod tests {
             "{p}"
         );
         assert!(p.contains("appsink name=thumb"));
+        assert!(p.contains("gdkpixbufoverlay name=mask"));
+        assert!(p.contains("valve name=firstframe"));
+        let plain = pipeline(
+            "videotestsrc",
+            30,
+            800,
+            600,
+            false,
+            "x264enc",
+            "h264parse",
+            "/tmp/a.mp4",
+        );
+        assert!(!plain.contains("gdkpixbufoverlay"));
+    }
+
+    #[test]
+    fn maps_the_pill_into_video_pixels() {
+        // A 168x40 pill at (1736, 1024) in a full-HD region, 1:1.
+        let r = exclude_pixels(
+            (1736.0, 1024.0, 168.0, 40.0),
+            1.0,
+            (1920, 1080),
+            (1920, 1080),
+        )
+        .unwrap();
+        assert_eq!((r.x, r.y), (1733, 1021));
+        assert_eq!((r.width, r.height), (174, 46));
+        // HiDPI (scale 2) and a video scaled down to half the capture size.
+        let r =
+            exclude_pixels((100.0, 50.0, 168.0, 40.0), 2.0, (3840, 2160), (1920, 1080)).unwrap();
+        assert_eq!((r.x, r.y, r.width, r.height), (97, 47, 174, 46));
+        // Entirely outside the frame: nothing to cover.
+        assert!(
+            exclude_pixels((5000.0, 5000.0, 10.0, 10.0), 1.0, (100, 100), (100, 100)).is_none()
+        );
     }
 
     #[test]
@@ -214,12 +271,5 @@ mod tests {
             Some("video/x-h264,stream-format=avc,alignment=au")
         );
         assert_eq!(parser(false, "openh264enc"), None);
-    }
-
-    #[test]
-    fn thumbnails_keep_the_aspect_ratio() {
-        assert_eq!(thumb_size(1600, 1000, 640), (640, 400));
-        assert_eq!(thumb_size(300, 200, 640), (300, 200));
-        assert_eq!(thumb_size(5000, 2, 640), (640, 2));
     }
 }

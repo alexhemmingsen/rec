@@ -3854,6 +3854,7 @@ dependencies = [
  "objc2-core-video",
  "objc2-foundation",
  "objc2-screen-capture-kit",
+ "png",
  "thiserror 2.0.21",
  "tokio",
  "windows",

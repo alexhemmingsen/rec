@@ -58,12 +58,12 @@ One codebase ([Tauri 2](https://tauri.app) + Rust), with each platform's native 
 ### Linux notes
 
 - **Wayland:** the system asks which screen to share the first time you record; Rec remembers the answer. Rec's own windows run through XWayland so the overlay and pill can be placed. The shortcut is also registered through the desktop's GlobalShortcuts portal (GNOME 48+, KDE Plasma 5.27+); how well that works depends on your desktop.
-- **Full-screen recordings show the Stop pill.** X11 and Wayland have no way to leave one window out of a screen capture, so when the region fills the screen the pill (which then has to sit inside it) is in the video. Leave a little room around the region to keep it out.
+- **Full-screen recordings:** X11 and Wayland can't leave one window out of a screen capture, so when the region fills the screen Rec covers the Stop pill's small area with what was there when recording started. The pill isn't in the video, but that patch doesn't update while recording.
 - **Encoder:** Rec needs an H.264 GStreamer encoder: x264 (`gstreamer1.0-plugins-ugly`) or OpenH264. The `.deb` pulls in what it needs; the AppImage bundles it.
 
 ## Tested end to end
 
-CI drives the real app on all three platforms: it presses the shortcut, checks the overlay and Esc, drags a region, clicks Stop, reads the clipboard and inspects the MP4 (codec, size, length). On Windows it also records the whole screen and checks that the Stop pill isn't in the video. GitHub's virtual Macs drop scripted mouse drags, so on macOS CI covers the shortcut, overlay, Esc and real screen capture, and the drag-to-record flow is checked on a real Mac. See `e2e/`.
+CI drives the real app on all three platforms: it presses the shortcut, checks the overlay and Esc, drags a region, clicks Stop, reads the clipboard and inspects the MP4 (codec, size, length). It also records the whole screen and checks that the Stop pill isn't in the video. GitHub's virtual Macs drop system-routed scripted drags, so there the driver delivers mouse events to Rec directly; the same test passes on a real Mac with ordinary system events. See `e2e/`.
 
 ## Building from source
 

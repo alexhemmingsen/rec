@@ -106,6 +106,12 @@ pub struct RecordRequest {
     pub output: PathBuf,
     pub fps: u32,
     pub show_cursor: bool,
+    /// A rectangle inside the region (region-relative, logical points) that
+    /// must not appear in the video: where Rec's Stop pill sits when the
+    /// region fills the screen. macOS and Windows exclude Rec's windows
+    /// from the capture themselves; Linux can't, so it covers this area with
+    /// what was there when recording started.
+    pub exclude: Option<Rect>,
 }
 
 /// A small RGBA image, used for the History thumbnail.
@@ -365,6 +371,7 @@ mod tests {
             output: PathBuf::from("/tmp/never.mp4"),
             fps: 30,
             show_cursor: true,
+            exclude: None,
         })
         .err()
         .unwrap();

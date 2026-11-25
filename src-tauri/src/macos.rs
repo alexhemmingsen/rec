@@ -78,6 +78,19 @@ pub fn mouse_location() -> Option<(f64, f64)> {
     Some((p.x, primary_height(mtm) - p.y))
 }
 
+/// Where an event happened, in top-left global coordinates: from the event
+/// itself when it belongs to a window, else the current mouse position.
+fn event_location(event: &NSEvent) -> Option<(f64, f64)> {
+    let mtm = MainThreadMarker::new()?;
+    match event.window(mtm) {
+        Some(window) => {
+            let p = window.convertPointToScreen(event.locationInWindow());
+            Some((p.x, primary_height(mtm) - p.y))
+        }
+        None => mouse_location(),
+    }
+}
+
 /// Process id of the app in front right now.
 pub fn frontmost_app_pid() -> Option<i32> {
     let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
@@ -129,7 +142,9 @@ pub fn watch_mouse(on_event: impl Fn(MouseKind, f64, f64) + 'static) {
             NSEventType::LeftMouseUp => Some(MouseKind::Up),
             _ => None,
         };
-        if let (Some(kind), Some((x, y))) = (kind, mouse_location()) {
+        if let Some(kind) = kind
+            && let Some((x, y)) = event_location(unsafe { event.as_ref() })
+        {
             on_event(kind, x, y);
         }
         event.as_ptr()

@@ -72,7 +72,8 @@ any other agent. The agent reads the video with ffmpeg or any tool it likes.
 | End-to-end tests | CI drives the real app on Windows and Linux; on macOS CI covers shortcut, overlay, Esc and live capture (its VMs drop scripted drags), and the full flow was verified on a real Mac (2026-11-25) |
 | Update check and in-app update | Done (GitHub Releases, signed updater artifacts for all three platforms) |
 | Self-signed macOS release signing | Done (`scripts/release-macos.sh`) |
-| Apple Developer ID + notarization | Needs the $99/yr Apple account. The release already notarizes and staples once the certificate and an App Store Connect API key are added as secrets (`REC_SIGN_P12_*`, `REC_NOTARY_API_KEY_JSON`) |
-| Windows code signing | Decided at the Windows release; unsigned for now (SmartScreen warns once) |
-| Linux limitations | A full-screen recording includes the Stop pill (no per-window capture exclusion on X11/Wayland); Wayland global shortcuts depend on the desktop's portal |
+| Signing while building (free, self-made) | Done: every macOS release is signed with Rec's own certificate, so Screen Recording permission survives updates |
+| Apple Developer ID + notarization | Launch step, per the plan above ("before the public launch"); needs the owner's $99/yr Apple account. The release notarizes and staples automatically once `REC_SIGN_P12_*` holds the Developer ID certificate and `REC_NOTARY_API_KEY_JSON` the App Store Connect key |
+| Windows code signing | Decided: unsigned until a certificate is bought (SmartScreen warns once; documented). The release signs automatically once `REC_WINDOWS_PFX_BASE64` / `REC_WINDOWS_PFX_PASSWORD` are set |
+| Stop pill out of full-screen recordings | macOS and Windows: the OS leaves Rec's windows out of the capture. Linux (no per-window exclusion): Rec covers the pill's area with what was there when recording started |
 | Website | Parked |

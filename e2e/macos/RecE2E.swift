@@ -75,12 +75,42 @@ func key(_ code: CGKeyCode, _ flags: CGEventFlags = []) {
 
 var eventTap: CGEventTapLocation = .cghidEventTap
 
+/// REC_E2E_DIRECT=1 (CI): deliver mouse events straight to Rec's process.
+/// GitHub's macOS VMs drop system-routed drags, so CI addresses the window
+/// under the point itself; Rec's handlers still get ordinary NSEvents.
+let direct = ProcessInfo.processInfo.environment["REC_E2E_DIRECT"] == "1"
+
+func recPid() -> pid_t? {
+    NSRunningApplication.runningApplications(withBundleIdentifier: "com.alexhem.rec").first?.processIdentifier
+}
+
+/// Rec's topmost on-screen window under a point.
+func recWindowNumber(at p: CGPoint) -> Int64? {
+    guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return nil }
+    for w in list where (w[kCGWindowOwnerName as String] as? String) == "Rec" {
+        guard let b = w[kCGWindowBounds as String] as? [String: Any],
+              let rect = CGRect(dictionaryRepresentation: b as CFDictionary), rect.contains(p),
+              let number = w[kCGWindowNumber as String] as? Int else { continue }
+        return Int64(number)
+    }
+    return nil
+}
+
 func mouse(_ type: CGEventType, _ p: CGPoint) {
     let e = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: .left)!
     if type == .leftMouseDown || type == .leftMouseUp || type == .leftMouseDragged {
         e.setIntegerValueField(.mouseEventClickState, value: 1)
     }
-    e.post(tap: eventTap)
+    if direct, let pid = recPid() {
+        CGWarpMouseCursorPosition(p)
+        if let window = recWindowNumber(at: p) {
+            e.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: window)
+            e.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: window)
+        }
+        e.postToPid(pid)
+    } else {
+        e.post(tap: eventTap)
+    }
 }
 
 func drag(_ a: CGPoint, _ b: CGPoint) {
@@ -197,7 +227,7 @@ func pixels(_ img: CGImage) -> (data: [UInt8], width: Int, height: Int) {
 
 guard CommandLine.arguments.count > 1 else { fail("usage: rec-e2e path/to/Rec.app") }
 let appPath = CommandLine.arguments[1]
-log("display \(display), scale \(scale)")
+log("display \(display), scale \(scale)\(direct ? ", mouse events posted to Rec directly" : "")")
 
 NSPasteboard.general.clearContents()
 let open = Process()
