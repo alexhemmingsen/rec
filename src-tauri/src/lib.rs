@@ -18,7 +18,9 @@ mod windowing;
 
 use std::sync::Mutex;
 
-use tauri::{Manager, RunEvent, WindowEvent};
+#[cfg(target_os = "macos")]
+use tauri::RunEvent;
+use tauri::{Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -153,6 +155,7 @@ pub fn run() {
             commands::open_recording,
             commands::reveal_recording,
             commands::delete_recording,
+            commands::ui_log,
             commands::start_recording,
             commands::cancel_selection,
             commands::stop_recording,

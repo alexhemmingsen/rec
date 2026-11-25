@@ -19,6 +19,7 @@ export function Overlay({ displayId }: { displayId: number }) {
   }, []);
 
   useEffect(() => {
+    api.uiLog(`overlay ready ${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}`);
     const unlisten = listen("overlay-reset", reset);
     return () => {
       unlisten.then((f) => f());
@@ -40,6 +41,7 @@ export function Overlay({ displayId }: { displayId: number }) {
   const point = (e: React.MouseEvent): Point => clampPoint({ x: e.clientX, y: e.clientY }, window.innerWidth, window.innerHeight);
 
   const onMouseDown = (e: React.MouseEvent) => {
+    api.uiLog(`mousedown button=${e.button} at ${e.clientX},${e.clientY} busy=${busy.current}`);
     if (e.button !== 0 || busy.current) return;
     const p = point(e);
     setStart(p);
@@ -51,6 +53,7 @@ export function Overlay({ displayId }: { displayId: number }) {
   };
 
   const onMouseUp = (e: React.MouseEvent) => {
+    api.uiLog(`mouseup at ${e.clientX},${e.clientY} start=${start ? `${start.x},${start.y}` : "none"}`);
     if (!start || busy.current) return;
     const rect = rectFromPoints(start, point(e));
     busy.current = true;

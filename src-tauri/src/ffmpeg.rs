@@ -3,8 +3,6 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::Duration;
 
 use serde::Serialize;
 
@@ -76,6 +74,8 @@ pub fn find_in(dirs: &[PathBuf]) -> Option<PathBuf> {
 /// Ask the user's login shell, which knows PATH additions from their dotfiles.
 #[cfg(unix)]
 fn from_login_shell() -> Option<PathBuf> {
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
     let shell = std::env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
     let mut child = Command::new(shell)
         .args(["-l", "-c", "command -v ffmpeg"])

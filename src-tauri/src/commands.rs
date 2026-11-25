@@ -291,6 +291,12 @@ pub fn delete_recording(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Lets the selection overlay report what it sees, for diagnosing the flow.
+#[tauri::command]
+pub fn ui_log(window: tauri::WebviewWindow, message: String) {
+    log::info!("[{}] {message}", window.label());
+}
+
 #[tauri::command]
 pub async fn start_recording(
     app: AppHandle,
@@ -313,6 +319,7 @@ pub async fn start_recording(
 
 #[tauri::command]
 pub fn cancel_selection(app: AppHandle) {
+    log::info!("cancel_selection from the overlay");
     recorder::cancel_selection(&app);
 }
 

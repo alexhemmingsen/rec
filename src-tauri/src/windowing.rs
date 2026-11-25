@@ -45,10 +45,11 @@ fn floating_builder<'a>(
         .shadow(false)
         .visible(false)
         .focused(false)
-        .visible_on_all_workspaces(true)
-        // Keeps the window out of screen captures on Windows
-        // (WDA_EXCLUDEFROMCAPTURE). macOS excludes Rec's windows by app.
-        .content_protected(true);
+        .visible_on_all_workspaces(true);
+    // Keeps the window out of screen captures on Windows
+    // (WDA_EXCLUDEFROMCAPTURE). macOS excludes Rec's windows by app instead.
+    #[cfg(windows)]
+    let builder = builder.content_protected(true);
     #[cfg(target_os = "macos")]
     let builder = builder.accept_first_mouse(true);
     builder
@@ -136,6 +137,13 @@ pub fn show_overlays(app: &AppHandle, displays: &[DisplayInfo]) -> tauri::Result
     for d in displays {
         if let Some(w) = app.get_webview_window(&overlay_label(d.id)) {
             w.show()?;
+            log::info!(
+                "overlay {} shown: visible={:?} position={:?} size={:?}",
+                d.id,
+                w.is_visible().ok(),
+                w.outer_position().ok(),
+                w.outer_size().ok()
+            );
         }
     }
     #[cfg(target_os = "macos")]

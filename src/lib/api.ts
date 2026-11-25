@@ -71,6 +71,7 @@ export const api = {
   startRecording: (displayId: number, r: { x: number; y: number; width: number; height: number }) =>
     invoke<void>("start_recording", { displayId, ...r }),
   cancelSelection: () => invoke<void>("cancel_selection"),
+  uiLog: (message: string) => invoke<void>("ui_log", { message }).catch(() => {}),
   stopRecording: () => invoke<HistoryItem>("stop_recording"),
   pillDone: () => invoke<void>("pill_done"),
   recordingStartedAt: () => invoke<number | null>("recording_started_at"),

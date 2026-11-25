@@ -11,6 +11,11 @@
 #       Developer ID. Signing every build with the same certificate keeps
 #       macOS's Screen Recording permission across updates.
 #   RCODESIGN                             path to rcodesign (default: rcodesign)
+#   REC_NOTARY_API_KEY                    App Store Connect API key JSON (from
+#       `rcodesign encode-app-store-connect-api-key`). When set, REC_SIGN_P12
+#       must be the Apple Developer ID certificate: the app is signed with the
+#       hardened runtime, notarized and stapled, and Gatekeeper opens it
+#       without the "could not verify" warning.
 #   TAURI_SIGNING_PRIVATE_KEY_PATH, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 #       updater signing key (minisign); its public key is in tauri.conf.json.
 set -euo pipefail
@@ -28,9 +33,15 @@ mkdir -p "$OUT/stage" "$OUT/dmg"
 cp -R target/release/bundle/macos/Rec.app "$OUT/stage/"
 APP="$OUT/stage/Rec.app"
 
+NOTARIZE=${REC_NOTARY_API_KEY:+yes}
 if [[ -n "${REC_SIGN_P12:-}" ]]; then
-  echo "==> Signing with $REC_SIGN_P12"
-  "$RCODESIGN" sign --p12-file "$REC_SIGN_P12" --p12-password "${REC_SIGN_P12_PASSWORD:-}" "$APP"
+  echo "==> Signing with $REC_SIGN_P12${NOTARIZE:+ (hardened runtime, for notarization)}"
+  "$RCODESIGN" sign --p12-file "$REC_SIGN_P12" --p12-password "${REC_SIGN_P12_PASSWORD:-}" \
+    ${NOTARIZE:+--code-signature-flags runtime} "$APP"
+  if [[ -n "$NOTARIZE" ]]; then
+    echo "==> Notarizing the app"
+    "$RCODESIGN" notary-submit --api-key-file "$REC_NOTARY_API_KEY" --staple "$APP"
+  fi
 else
   echo "==> No certificate given: ad-hoc signing"
   codesign --force --deep --sign - "$APP"
@@ -42,6 +53,10 @@ echo "==> Creating the DMG"
 cp -R "$APP" "$OUT/dmg/"
 ln -s /Applications "$OUT/dmg/Applications"
 hdiutil create -quiet -volname "Rec" -srcfolder "$OUT/dmg" -ov -format UDZO "$OUT/Rec_${VERSION}_aarch64.dmg"
+if [[ -n "$NOTARIZE" ]]; then
+  echo "==> Notarizing the DMG"
+  "$RCODESIGN" notary-submit --api-key-file "$REC_NOTARY_API_KEY" --staple "$OUT/Rec_${VERSION}_aarch64.dmg"
+fi
 
 echo "==> Creating the updater archive"
 COPYFILE_DISABLE=1 tar -czf "$OUT/Rec.app.tar.gz" -C "$OUT/stage" Rec.app

@@ -125,7 +125,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-            gstreamer1.0-plugins-ugly gstreamer1.0-x xvfb xdotool xclip ffmpeg dbus-x11
+            gstreamer1.0-plugins-ugly gstreamer1.0-x xvfb xdotool xclip ffmpeg dbus-x11 x11-utils
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -138,7 +138,14 @@ jobs:
       - name: End-to-end test
         run: |
           BIN=$(ls target/release/Rec target/release/rec 2>/dev/null | head -1)
+          export SHOT="$RUNNER_TEMP/screen.png"
           xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- e2e/linux/run.sh "$PWD/$BIN"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-linux
+          path: ${{ runner.temp }}/screen.png
+          if-no-files-found: ignore
 
   windows-e2e:
     name: Windows end-to-end

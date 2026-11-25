@@ -16,6 +16,8 @@ say() { echo "[e2e] $*"; }
 fail() {
   echo "[e2e] FAIL: $*"
   echo "--- app log:"; cat "$LOG" || true
+  echo "--- X window tree:"; xwininfo -root -tree 2>/dev/null | grep -iE 'rec|"' | head -40 || true
+  ffmpeg -loglevel error -y -f x11grab -i "$DISPLAY" -frames:v 1 "${SHOT:-/tmp/rec-e2e.png}" || true
   kill "$PID" 2>/dev/null || true
   exit 1
 }
@@ -23,7 +25,7 @@ ok() { say "ok: $*"; PASSED=$((PASSED + 1)); }
 
 # Visible windows of the app as "id x y w h name" lines.
 windows() {
-  for id in $(xdotool search --onlyvisible --pid "$PID" 2>/dev/null || true); do
+  for id in $( (xdotool search --onlyvisible --pid "$PID"; xdotool search --onlyvisible --name '^Rec( selection)?$') 2>/dev/null | sort -u); do
     eval "$(xdotool getwindowgeometry --shell "$id" 2>/dev/null)" || continue
     echo "$id $X $Y $WIDTH $HEIGHT $(xdotool getwindowname "$id" 2>/dev/null)"
   done
