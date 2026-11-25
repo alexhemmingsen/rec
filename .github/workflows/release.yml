@@ -13,8 +13,9 @@ jobs:
   macos:
     runs-on: macos-latest
     env:
-      RCODESIGN_VERSION: 0.29.0
-      RCODESIGN_SHA256: d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a
+      # Not RCODESIGN_*: rcodesign reads those variables as its own config.
+      APPLE_CODESIGN_VERSION: 0.29.0
+      APPLE_CODESIGN_SHA256: d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -39,9 +40,9 @@ jobs:
       - name: Install rcodesign
         run: |
           mkdir -p "$RUNNER_TEMP/rcodesign" && cd "$RUNNER_TEMP/rcodesign"
-          NAME="apple-codesign-${RCODESIGN_VERSION}-aarch64-apple-darwin"
-          curl -fsSL -o "$NAME.tar.gz" "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/$NAME.tar.gz"
-          echo "$RCODESIGN_SHA256  $NAME.tar.gz" | shasum -a 256 -c -
+          NAME="apple-codesign-${APPLE_CODESIGN_VERSION}-aarch64-apple-darwin"
+          curl -fsSL -o "$NAME.tar.gz" "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${APPLE_CODESIGN_VERSION}/$NAME.tar.gz"
+          echo "$APPLE_CODESIGN_SHA256  $NAME.tar.gz" | shasum -a 256 -c -
           tar -xzf "$NAME.tar.gz"
           echo "RCODESIGN=$RUNNER_TEMP/rcodesign/$NAME/rcodesign" >> "$GITHUB_ENV"
 
