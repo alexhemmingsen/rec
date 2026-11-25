@@ -41,7 +41,9 @@ fn floating_builder<'a>(
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
-        .resizable(false)
+        // GTK ignores size requests on non-resizable windows; borderless
+        // windows have nothing to resize them with anyway.
+        .resizable(cfg!(target_os = "linux"))
         .shadow(false)
         .visible(false)
         .focused(false)

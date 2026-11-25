@@ -338,6 +338,7 @@ impl Recording {
 
         log::info!("linux capture: pipeline built, starting");
         pipeline.set_state(gst::State::Playing).map_err(gst_err)?;
+        let started = Instant::now();
         let bus = pipeline
             .bus()
             .ok_or_else(|| CaptureError::Platform("no bus".into()))?;
@@ -351,7 +352,6 @@ impl Recording {
                 return Err(CaptureError::Platform(e.error().to_string()));
             }
         }
-        let started = Instant::now();
         log::info!("linux capture: playing, waiting for the first frame");
         let thumbnail = pull_thumbnail(&sink, Duration::from_secs(3));
         log::info!(

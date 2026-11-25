@@ -73,12 +73,14 @@ func key(_ code: CGKeyCode, _ flags: CGEventFlags = []) {
     }
 }
 
+var eventTap: CGEventTapLocation = .cghidEventTap
+
 func mouse(_ type: CGEventType, _ p: CGPoint) {
     let e = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: .left)!
     if type == .leftMouseDown || type == .leftMouseUp || type == .leftMouseDragged {
         e.setIntegerValueField(.mouseEventClickState, value: 1)
     }
-    e.post(tap: .cghidEventTap)
+    e.post(tap: eventTap)
 }
 
 func drag(_ a: CGPoint, _ b: CGPoint) {
@@ -203,6 +205,18 @@ if pill() == nil {
     key(53)
     pause(1.5)
     log("after Esc: overlay visible = \(overlayVisible())")
+    // Retry through the session event tap to tell a delivery problem from an
+    // app problem.
+    eventTap = .cgSessionEventTap
+    mouse(.leftMouseUp, CGPoint(x: region.maxX, y: region.maxY))
+    pause(0.5)
+    pressShortcut()
+    waitFor("the overlay (session-tap retry)", timeout: 5, overlayVisible)
+    pause(0.5)
+    drag(region.origin, CGPoint(x: region.maxX, y: region.maxY))
+    let retryDeadline = Date().addingTimeInterval(8)
+    while pill() == nil && Date() < retryDeadline { pause(0.1) }
+    log("session-tap retry: pill \(pill() == nil ? "missing" : "shown")")
 }
 waitFor("the Stop pill", timeout: 1) { pill() != nil }
 check(!overlayVisible(), "the overlay is gone while recording")

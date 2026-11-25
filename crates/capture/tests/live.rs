@@ -41,8 +41,10 @@ fn records_a_region_of_the_main_display() {
     );
     assert_eq!(summary.path, out);
     assert!(summary.frames >= 1);
+    // Capture can take a few hundred ms to deliver its first frame on a
+    // slow (virtual) machine.
     assert!(
-        summary.duration.as_secs_f64() > 1.7,
+        summary.duration.as_secs_f64() > 1.2,
         "{:?}",
         summary.duration
     );

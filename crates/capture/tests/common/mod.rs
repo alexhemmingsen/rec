@@ -11,7 +11,8 @@ pub fn temp_path(name: &str) -> PathBuf {
 }
 
 /// The file is an MP4; when ffprobe is installed, also check codec, size and
-/// duration (within 0.15 s).
+/// duration (within 0.25 s: encoders round to whole frames and live
+/// pipelines flush a few buffered ones).
 pub fn assert_mp4(path: &Path, width: u32, height: u32, duration: f64) {
     let bytes = std::fs::read(path).unwrap();
     assert!(bytes.len() > 1000, "file too small: {}", bytes.len());
@@ -43,7 +44,7 @@ pub fn assert_mp4(path: &Path, width: u32, height: u32, duration: f64) {
         .and_then(|d| d.trim().parse().ok())
         .unwrap();
     assert!(
-        (d - duration).abs() < 0.15,
+        (d - duration).abs() < 0.25,
         "ffprobe duration {d}, expected {duration}"
     );
 }

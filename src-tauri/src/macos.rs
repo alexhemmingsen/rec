@@ -14,9 +14,10 @@ use objc2_app_kit::{
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use rec_capture::Rect;
 
-/// NSScreenSaverWindowLevel: the selection overlay covers the menu bar and
-/// Dock, like the system screenshot tool.
-pub const OVERLAY_LEVEL: isize = 1000;
+/// NSPopUpMenuWindowLevel: above the menu bar (24) and the Dock (20), so the
+/// selection overlay covers the whole screen. Not the screen-saver level
+/// (1000): the window server can withhold drags from windows that high.
+pub const OVERLAY_LEVEL: isize = 101;
 /// NSStatusWindowLevel: the Stop pill floats above normal windows.
 pub const PILL_LEVEL: isize = 25;
 
