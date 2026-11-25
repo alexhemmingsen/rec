@@ -67,10 +67,12 @@ any other agent. The agent reads the video with ffmpeg or any tool it likes.
 
 | Area | Status |
 | --- | --- |
-| macOS recording flow, app, onboarding, History | Done |
-| Update check and in-app update | Done (GitHub Releases + signed updater archive) |
-| Self-signed release signing | Done (`scripts/release-macos.sh`, `.github/workflows/release.yml`) |
-| Windows capture backend | Planned; the app builds and runs, recording reports "not available yet" |
-| Linux capture backend | Planned, same as Windows |
-| Apple Developer ID + notarization | Before the public launch |
+| Recording flow, app, onboarding, History | Done on macOS, Windows and Linux |
+| Capture | macOS: ScreenCaptureKit + AVFoundation. Windows: Windows Graphics Capture + Media Foundation. Linux: GStreamer (X11 directly; Wayland through the ScreenCast portal) |
+| End-to-end tests | CI drives the real app on all three platforms (`e2e/`) |
+| Update check and in-app update | Done (GitHub Releases, signed updater artifacts for all three platforms) |
+| Self-signed macOS release signing | Done (`scripts/release-macos.sh`) |
+| Apple Developer ID + notarization | Needs the $99/yr Apple account. The release already notarizes and staples once the certificate and an App Store Connect API key are added as secrets (`REC_SIGN_P12_*`, `REC_NOTARY_API_KEY_JSON`) |
+| Windows code signing | Decided at the Windows release; unsigned for now (SmartScreen warns once) |
+| Linux limitations | A full-screen recording includes the Stop pill (no per-window capture exclusion on X11/Wayland); Wayland global shortcuts depend on the desktop's portal |
 | Website | Parked |

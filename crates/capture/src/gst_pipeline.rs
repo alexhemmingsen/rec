@@ -101,7 +101,7 @@ pub fn pipeline(
          ! mp4mux faststart=true ! filesink location={} \
          t. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! videoscale \
          ! video/x-raw,format=RGBA,width={thumb_width},height={thumb_height} \
-         ! appsink name=thumb max-buffers=1 drop=true sync=false",
+         ! appsink name=thumb max-buffers=1 drop=true sync=false wait-on-eos=false",
         quote(path)
     )
 }

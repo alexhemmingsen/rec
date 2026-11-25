@@ -25,11 +25,15 @@ Recordings are silent H.264 MP4s at full Retina sharpness and 30 fps, with the m
 
 ## Download
 
-Get `Rec_<version>_aarch64.dmg` from the [latest release](https://github.com/alexhemmingsen/rec/releases/latest). It needs macOS 14 (Sonoma) or newer on Apple Silicon.
+Get the latest version from [Releases](https://github.com/alexhemmingsen/rec/releases/latest):
 
-**First launch:** Rec isn't notarized by Apple yet, so macOS says it "could not verify" the app. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. You only do this once; updates install from inside Rec.
+| Platform | File | Notes |
+| --- | --- | --- |
+| macOS 14+ (Apple Silicon) | `Rec_<version>_aarch64.dmg` | Not notarized by Apple yet: the first time, macOS says it "could not verify" the app. Open **System Settings → Privacy & Security** and click **Open Anyway**. Once only. |
+| Windows 10 (2004+) / 11 (x64) | `Rec_<version>_x64-setup.exe` | The installer isn't code-signed yet: if SmartScreen warns, click **More info → Run anyway**. |
+| Linux (x64) | `Rec_<version>_amd64.deb` or `.AppImage` | See [Linux notes](#linux-notes). |
 
-The first run walks you through granting Screen Recording permission, choosing a shortcut, checking for ffmpeg and making a practice recording.
+The first run walks you through permission (macOS), choosing a shortcut, checking for ffmpeg and making a practice recording. Updates install from inside Rec.
 
 ## Privacy
 
@@ -45,7 +49,21 @@ Closing the window keeps Rec running, so the shortcut keeps working. Quit with �
 
 ## Platforms
 
-Rec is built as one codebase for macOS, Windows and Linux ([Tauri 2](https://tauri.app) + Rust). It ships on macOS first; Windows (Windows Graphics Capture) and Linux (PipeWire through the ScreenCast portal) follow. On those platforms the app builds and runs today, but recording reports that it isn't available yet.
+One codebase ([Tauri 2](https://tauri.app) + Rust), with each platform's native capture:
+
+- **macOS:** ScreenCaptureKit frames, hardware H.264 through AVFoundation. Rec leaves its own windows out of the video.
+- **Windows:** Windows Graphics Capture, H.264 through Media Foundation. Rec's overlay and Stop pill are excluded from captures (`WDA_EXCLUDEFROMCAPTURE`).
+- **Linux:** GStreamer. X11 sessions record directly; Wayland sessions go through the system's screen-sharing portal (PipeWire).
+
+### Linux notes
+
+- **Wayland:** the system asks which screen to share the first time you record; Rec remembers the answer. Rec's own windows run through XWayland so the overlay and pill can be placed. The shortcut is also registered through the desktop's GlobalShortcuts portal (GNOME 48+, KDE Plasma 5.27+); how well that works depends on your desktop.
+- **Full-screen recordings show the Stop pill.** X11 and Wayland have no way to leave one window out of a screen capture, so when the region fills the screen the pill (which then has to sit inside it) is in the video. Leave a little room around the region to keep it out.
+- **Encoder:** Rec needs an H.264 GStreamer encoder: x264 (`gstreamer1.0-plugins-ugly`) or OpenH264. The `.deb` pulls in what it needs; the AppImage bundles it.
+
+## Tested end to end
+
+CI drives the real app on all three platforms: it presses the shortcut, checks the overlay and Esc, drags a region, clicks Stop, reads the clipboard and inspects the MP4 (codec, size, length). On macOS and Windows it also records the whole screen and checks that the Stop pill isn't in the video. See `e2e/`.
 
 ## Building from source
 
@@ -59,7 +77,7 @@ cargo test --workspace  # Rust tests, including real H.264 encoding
 pnpm tauri build        # Rec.app and a DMG in target/release/bundle
 ```
 
-When you run from a terminal, macOS attributes screen recording to the terminal app, so grant Screen Recording to it (or test with the built `Rec.app`). `scripts/release-macos.sh` builds the signed release artifacts; see `AGENTS.md` for the layout of the code.
+When you run from a terminal, macOS attributes screen recording to the terminal app, so grant Screen Recording to it (or test with the built `Rec.app`). On Linux you need the GStreamer development packages (`libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev`) plus Tauri's usual WebKitGTK ones. `scripts/release-macos.sh` builds the signed release artifacts; see `AGENTS.md` for the layout of the code.
 
 ## License
 

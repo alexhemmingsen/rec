@@ -50,11 +50,17 @@ pub fn run() {
                     if event.state() != ShortcutState::Pressed {
                         return;
                     }
-                    if recorder::is_escape(shortcut) {
-                        recorder::cancel_selection(app);
-                    } else {
-                        recorder::on_shortcut(app);
-                    }
+                    // Off the hotkey thread: the flow (un)registers Esc, which
+                    // on Linux waits for that very thread.
+                    let app = app.clone();
+                    let escape = recorder::is_escape(shortcut);
+                    std::thread::spawn(move || {
+                        if escape {
+                            recorder::cancel_selection(&app);
+                        } else {
+                            recorder::on_shortcut(&app);
+                        }
+                    });
                 })
                 .build(),
         )
@@ -101,7 +107,14 @@ pub fn run() {
                 phase: Mutex::new(Phase::Idle),
                 restore: Mutex::new(Restore::default()),
                 pending_update: Mutex::new(None),
+                native_drag: Mutex::new(None),
             });
+
+            #[cfg(target_os = "macos")]
+            {
+                let h = handle.clone();
+                macos::watch_mouse(move |kind, x, y| recorder::on_native_mouse(&h, kind, x, y));
+            }
 
             // Create the overlays and the pill now so the shortcut is instant.
             if let Err(e) = windowing::prepare_overlays(&handle, &rec_capture::displays()) {

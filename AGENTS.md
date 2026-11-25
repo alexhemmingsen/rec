@@ -12,8 +12,10 @@ behaviour.
     thumbnail conversion), with unit tests.
   - `src/macos/`: ScreenCaptureKit (`mod.rs`) feeding AVAssetWriter
     (`writer.rs`). Rec's own windows are excluded from the capture.
-  - `src/unsupported.rs`: Windows/Linux placeholder returning
-    `CaptureError::Unsupported`.
+  - `src/windows.rs`: Windows Graphics Capture + Media Foundation (through
+    `windows-capture`), written at a constant 30 fps.
+  - `src/linux.rs` + `src/gst_pipeline.rs`: GStreamer; `ximagesrc` on X11,
+    ScreenCast portal + `pipewiresrc` on Wayland.
 - `src-tauri/`: the Tauri app.
   - `recorder.rs`: the flow (shortcut → selection → recording → Stop →
     clipboard) and `AppState`.
@@ -25,7 +27,13 @@ behaviour.
     `ffmpeg.rs`, `updater.rs`: small modules with unit tests.
 - `src/`: React UI. `main.tsx` picks the view from the window label (`main`,
   `overlay-<displayId>`, `pill`). Pure helpers in `src/lib/` have Vitest tests.
-- `scripts/release-macos.sh`: signed DMG + updater archive + `latest.json`.
+- `scripts/release-macos.sh`: signed DMG + updater archive;
+  `scripts/latest-json.mjs` merges every platform's signed artifacts into
+  the updater's `latest.json`.
+- `e2e/`: end-to-end drivers that operate the real app (macOS: Swift with
+  CGEvents; Windows: PowerShell with SendInput; Linux: xdotool under Xvfb).
+  CI runs them; on macOS CI grants permissions with
+  `e2e/macos/grant-permissions.sh` (CI runners only).
 
 ## Commands
 

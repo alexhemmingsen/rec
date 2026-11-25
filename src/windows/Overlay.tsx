@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { api } from "../lib/api";
-import { clampPoint, isClick, rectFromPoints, sizeLabel, type Point } from "../lib/selection";
+import { clampPoint, isClick, rectFromPoints, sizeLabel, type Point, type Rect } from "../lib/selection";
+
+/** On macOS the app tracks the drag natively (AppKit) and decides; the page
+ *  only draws. Elsewhere the page's pointer events decide. */
+const NATIVE_DRAG = /Mac OS X|Macintosh/.test(navigator.userAgent);
 
 /**
  * Covers one display. Drag a box: recording starts the moment you let go.
@@ -31,8 +36,14 @@ export function Overlay({ displayId }: { displayId: number }) {
       reset();
       root.current?.focus();
     });
+    const unlistenDrag = getCurrentWebviewWindow().listen<Rect>("overlay-drag", (e) => {
+      const r = e.payload;
+      setStart({ x: r.x, y: r.y });
+      setCurrent({ x: r.x + r.width, y: r.y + r.height });
+    });
     return () => {
       unlisten.then((f) => f());
+      unlistenDrag.then((f) => f());
     };
   }, [reset]);
 
@@ -42,7 +53,7 @@ export function Overlay({ displayId }: { displayId: number }) {
     (x: number, y: number, how: string) => {
       const from = startRef.current;
       api.uiLog(`${how} at ${x},${y} start=${from ? `${from.x},${from.y}` : "none"} busy=${busy.current}`);
-      if (!from || busy.current) return;
+      if (NATIVE_DRAG || !from || busy.current) return;
       busy.current = true;
       const rect = rectFromPoints(from, point(x, y));
       if (isClick(rect)) {

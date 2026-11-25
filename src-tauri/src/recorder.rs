@@ -61,6 +61,16 @@ pub struct AppState {
     pub phase: Mutex<Phase>,
     pub restore: Mutex<Restore>,
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
+    /// Where a native (AppKit) drag started, global top-left coordinates.
+    pub native_drag: Mutex<Option<(f64, f64)>>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct DragRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 #[derive(Clone, Serialize)]
@@ -307,6 +317,71 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
             emit_error(app, &err);
             let _ = app.emit("phase-changed", "idle");
             Err(err.to_string())
+        }
+    }
+}
+
+/// macOS: AppKit mouse events drive the selection (see `macos::watch_mouse`).
+/// Runs on the main thread, so the slow work goes to another thread.
+#[cfg(target_os = "macos")]
+pub fn on_native_mouse(app: &AppHandle, kind: crate::macos::MouseKind, x: f64, y: f64) {
+    use crate::macos::MouseKind;
+    let state = app.state::<AppState>();
+    let displays = match &*state.phase.lock().unwrap() {
+        Phase::Selecting { displays } => displays.clone(),
+        _ => return,
+    };
+    let contains = |d: &&DisplayInfo, px: f64, py: f64| {
+        let f = d.frame;
+        px >= f.x && px < f.x + f.width && py >= f.y && py < f.y + f.height
+    };
+    let mut drag = state.native_drag.lock().unwrap();
+    match kind {
+        MouseKind::Down => {
+            log::info!("native mousedown at {x},{y}");
+            *drag = Some((x, y));
+        }
+        MouseKind::Dragged => {
+            let Some((sx, sy)) = *drag else { return };
+            let Some(d) = displays.iter().find(|d| contains(d, sx, sy)) else {
+                return;
+            };
+            let (ex, ey) = (
+                x.clamp(d.frame.x, d.frame.x + d.frame.width),
+                y.clamp(d.frame.y, d.frame.y + d.frame.height),
+            );
+            let rect = DragRect {
+                x: sx.min(ex) - d.frame.x,
+                y: sy.min(ey) - d.frame.y,
+                width: (sx - ex).abs(),
+                height: (sy - ey).abs(),
+            };
+            let _ = app.emit_to(windowing::overlay_label(d.id), "overlay-drag", rect);
+        }
+        MouseKind::Up => {
+            let Some((sx, sy)) = drag.take() else { return };
+            log::info!("native mouseup at {x},{y}");
+            let Some(d) = displays.iter().find(|d| contains(d, sx, sy)) else {
+                return;
+            };
+            let (ex, ey) = (
+                x.clamp(d.frame.x, d.frame.x + d.frame.width),
+                y.clamp(d.frame.y, d.frame.y + d.frame.height),
+            );
+            let region = Rect::new(
+                sx.min(ex) - d.frame.x,
+                sy.min(ey) - d.frame.y,
+                (sx - ex).abs(),
+                (sy - ey).abs(),
+            );
+            let (app, id) = (app.clone(), d.id);
+            std::thread::spawn(move || {
+                if region.width < MIN_REGION || region.height < MIN_REGION {
+                    cancel_selection(&app);
+                } else if let Err(e) = start_recording(&app, id, region) {
+                    log::info!("start_recording: {e}");
+                }
+            });
         }
     }
 }

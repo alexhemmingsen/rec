@@ -3,11 +3,13 @@
 //! the user was using.
 
 use std::ffi::c_void;
+use std::ptr::NonNull;
 
+use block2::RcBlock;
 use objc2::MainThreadMarker;
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationOptions, NSEvent, NSRunningApplication, NSScreen,
-    NSWindow, NSWindowCollectionBehavior, NSWorkspace,
+    NSApplication, NSApplicationActivationOptions, NSEvent, NSEventMask, NSEventType,
+    NSRunningApplication, NSScreen, NSWindow, NSWindowCollectionBehavior, NSWorkspace,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use rec_capture::Rect;
@@ -92,6 +94,44 @@ pub fn activate_self() {
     if let Some(mtm) = MainThreadMarker::new() {
         NSApplication::sharedApplication(mtm).activate();
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseKind {
+    Down,
+    Dragged,
+    Up,
+}
+
+/// Watch left-button mouse events delivered to Rec's own windows (an AppKit
+/// local monitor; it sees nothing from other apps and needs no permission).
+/// The selection overlay is driven from here rather than from WebKit, which
+/// can lose a drag in a borderless window at screen-saver level. Points are
+/// global, top-left origin. Call once, on the main thread.
+pub fn watch_mouse(on_event: impl Fn(MouseKind, f64, f64) + 'static) {
+    if MainThreadMarker::new().is_none() {
+        log::error!("watch_mouse called off the main thread");
+        return;
+    }
+    let block = RcBlock::new(move |event: NonNull<NSEvent>| -> *mut NSEvent {
+        // SAFETY: AppKit passes a valid event for the duration of the call.
+        let kind = match unsafe { event.as_ref() }.r#type() {
+            NSEventType::LeftMouseDown => Some(MouseKind::Down),
+            NSEventType::LeftMouseDragged => Some(MouseKind::Dragged),
+            NSEventType::LeftMouseUp => Some(MouseKind::Up),
+            _ => None,
+        };
+        if let (Some(kind), Some((x, y))) = (kind, mouse_location()) {
+            on_event(kind, x, y);
+        }
+        event.as_ptr()
+    });
+    let mask =
+        NSEventMask::LeftMouseDown | NSEventMask::LeftMouseDragged | NSEventMask::LeftMouseUp;
+    // SAFETY: the block returns the event it was given.
+    let monitor = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(mask, &block) };
+    // The monitor lives as long as the app.
+    std::mem::forget(monitor);
 }
 
 #[cfg(test)]

@@ -3808,6 +3808,7 @@ name = "rec"
 version = "0.1.0"
 dependencies = [
  "ashpd",
+ "block2",
  "chrono",
  "futures-util",
  "image",
