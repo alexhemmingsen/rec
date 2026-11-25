@@ -152,7 +152,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
-      - run: choco install ffmpeg -y --no-progress
+      - name: ffmpeg (for ffprobe checks)
+        shell: pwsh
+        run: |
+          for ($i = 0; $i -lt 3; $i++) { choco install ffmpeg -y --no-progress; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep 10 }
+          Get-ChildItem C:\ProgramData\chocolatey\bin\ff*.exe
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:

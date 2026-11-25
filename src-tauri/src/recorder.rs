@@ -62,9 +62,11 @@ pub struct AppState {
     pub restore: Mutex<Restore>,
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
     /// Where a native (AppKit) drag started, global top-left coordinates.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub native_drag: Mutex<Option<(f64, f64)>>,
 }
 
+#[cfg(target_os = "macos")]
 #[derive(Clone, Serialize)]
 pub struct DragRect {
     pub x: f64,
@@ -293,6 +295,7 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
     );
     match Recording::start(request) {
         Ok(recording) => {
+            log::info!("recording started");
             let started_at_ms = Utc::now().timestamp_millis();
             *phase = Phase::Recording {
                 recording,
@@ -303,8 +306,9 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
             // Give the keyboard back to the app being recorded.
             reactivate_previous(app);
             let global = layout::to_global(region, display.frame);
-            if let Err(e) = windowing::show_pill(app, global, &display, started_at_ms) {
-                log::error!("cannot show the Stop pill: {e}");
+            match windowing::show_pill(app, global, &display, started_at_ms) {
+                Ok(()) => log::info!("Stop pill shown"),
+                Err(e) => log::error!("cannot show the Stop pill: {e}"),
             }
             let _ = app.emit("phase-changed", "recording");
             Ok(())

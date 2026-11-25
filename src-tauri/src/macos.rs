@@ -115,7 +115,9 @@ pub fn watch_mouse(on_event: impl Fn(MouseKind, f64, f64) + 'static) {
     }
     let block = RcBlock::new(move |event: NonNull<NSEvent>| -> *mut NSEvent {
         // SAFETY: AppKit passes a valid event for the duration of the call.
-        let kind = match unsafe { event.as_ref() }.r#type() {
+        let ty = unsafe { event.as_ref() }.r#type();
+        log::debug!("AppKit event {}", ty.0);
+        let kind = match ty {
             NSEventType::LeftMouseDown => Some(MouseKind::Down),
             NSEventType::LeftMouseDragged => Some(MouseKind::Dragged),
             NSEventType::LeftMouseUp => Some(MouseKind::Up),

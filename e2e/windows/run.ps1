@@ -83,6 +83,16 @@ public static class E2E {
 "@
 
 [E2E]::DpiAware()
+function Find-Tool($name) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $candidates = @("C:\ProgramData\chocolatey\bin\$name.exe") + (Get-ChildItem "C:\ProgramData\chocolatey\lib\ffmpeg*" -Recurse -Filter "$name.exe" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+    foreach ($c in $candidates) { if (Test-Path $c) { return $c } }
+    throw "$name not found"
+}
+$ffprobe = Find-Tool "ffprobe"
+$ffmpeg = Find-Tool "ffmpeg"
+Write-Host "[e2e] ffprobe: $ffprobe"
 $script:passed = 0
 function Ok($what) { Write-Host "[e2e] ok: $what"; $script:passed++ }
 function Fail($what) {
@@ -142,7 +152,7 @@ Write-Host "[e2e] clipboard: $file"
 if ([System.IO.Path]::IsPathRooted($file)) { Ok "the path is absolute" } else { Fail "not absolute" }
 if ((Split-Path $file -Leaf) -match '^rec-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(-\d+)?\.mp4$') { Ok "the file name matches rec-YYYY-MM-DD-HH-MM-SS.mp4" } else { Fail "bad name" }
 if (Test-Path $file) { Ok "the file exists" } else { Fail "missing file" }
-$info = & ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height:format=duration -of default=nw=1 $file
+$info = & $ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height:format=duration -of default=nw=1 $file
 Write-Host "[e2e] $($info -join ' ')"
 if ($info -contains "codec_name=h264") { Ok "H.264" } else { Fail "not H.264" }
 $ew = ($x2 - $x1) -band -2; $eh = ($y2 - $y1) -band -2
@@ -174,7 +184,7 @@ WaitFor "a second .mp4 path" 15 { $c = (Clip).Trim().Trim('"'); $c.EndsWith(".mp
 $file2 = (Clip).Trim().Trim('"')
 $crop = "crop=$($p2.W):$($p2.H):$($p2.X - 1):$($p2.Y - 1)"
 $raw = Join-Path $env:TEMP "rec-pill.rgb"
-& ffmpeg -v error -y -sseof -0.6 -i $file2 -frames:v 1 -vf $crop -f rawvideo -pix_fmt rgb24 $raw
+& $ffmpeg -v error -y -sseof -0.6 -i $file2 -frames:v 1 -vf $crop -f rawvideo -pix_fmt rgb24 $raw
 $bytes = [System.IO.File]::ReadAllBytes($raw)
 $red = 0; $total = $bytes.Length / 3
 for ($i = 0; $i -lt $bytes.Length; $i += 3) { if ($bytes[$i] -gt 200 -and $bytes[$i + 1] -lt 110 -and $bytes[$i + 2] -lt 100) { $red++ } }

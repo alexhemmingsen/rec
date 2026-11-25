@@ -74,8 +74,11 @@ func key(_ code: CGKeyCode, _ flags: CGEventFlags = []) {
 }
 
 func mouse(_ type: CGEventType, _ p: CGPoint) {
-    CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: .left)!
-        .post(tap: .cghidEventTap)
+    let e = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: .left)!
+    if type == .leftMouseDown || type == .leftMouseUp || type == .leftMouseDragged {
+        e.setIntegerValueField(.mouseEventClickState, value: 1)
+    }
+    e.post(tap: .cghidEventTap)
 }
 
 func drag(_ a: CGPoint, _ b: CGPoint) {
@@ -83,6 +86,7 @@ func drag(_ a: CGPoint, _ b: CGPoint) {
     pause(0.3)
     mouse(.leftMouseDown, a)
     pause(0.1)
+    log("after mousedown: pressed buttons \(NSEvent.pressedMouseButtons), cursor \(NSEvent.mouseLocation)")
     for i in 1...30 {
         let t = CGFloat(i) / 30
         mouse(.leftMouseDragged, CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t))
@@ -166,7 +170,7 @@ log("display \(display), scale \(scale)")
 NSPasteboard.general.clearContents()
 let open = Process()
 open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-open.arguments = ["-n", appPath]
+open.arguments = ["-n", "--env", "REC_DEBUG=1", appPath]
 try! open.run()
 open.waitUntilExit()
 
@@ -191,7 +195,16 @@ waitFor("the overlay again", timeout: 5, overlayVisible)
 pause(0.5)
 let region = CGRect(x: display.minX + 160, y: display.minY + 140, width: 400, height: 300)
 drag(region.origin, CGPoint(x: region.maxX, y: region.maxY))
-waitFor("the Stop pill", timeout: 8) { pill() != nil }
+log("after mouseup: pressed buttons \(NSEvent.pressedMouseButtons), cursor \(NSEvent.mouseLocation)")
+let pillDeadline = Date().addingTimeInterval(8)
+while pill() == nil && Date() < pillDeadline { pause(0.1) }
+if pill() == nil {
+    // Is Rec still responsive? Esc should close the overlay.
+    key(53)
+    pause(1.5)
+    log("after Esc: overlay visible = \(overlayVisible())")
+}
+waitFor("the Stop pill", timeout: 1) { pill() != nil }
 check(!overlayVisible(), "the overlay is gone while recording")
 let p1 = pill()!
 log("pill at \(p1.bounds), region \(region)")

@@ -42,6 +42,15 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
+                // REC_DEBUG=1 adds per-event tracing (used by the e2e tests).
+                .level_for(
+                    "rec_lib::macos",
+                    if std::env::var_os("REC_DEBUG").is_some() {
+                        log::LevelFilter::Debug
+                    } else {
+                        log::LevelFilter::Info
+                    },
+                )
                 .build(),
         )
         .plugin(

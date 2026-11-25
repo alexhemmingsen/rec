@@ -240,6 +240,10 @@ fn pull_thumbnail(sink: &gst_app::AppSink, timeout: Duration) -> Option<Frame> {
 
 impl Recording {
     pub fn start(request: RecordRequest) -> Result<Recording> {
+        log::info!(
+            "linux capture: starting ({})",
+            if is_wayland() { "wayland" } else { "x11" }
+        );
         gst::init().map_err(gst_err)?;
         let display = displays()
             .into_iter()
@@ -332,6 +336,7 @@ impl Recording {
             .and_then(|e| e.downcast::<gst_app::AppSink>().ok())
             .ok_or_else(|| CaptureError::Platform("thumbnail sink missing".into()))?;
 
+        log::info!("linux capture: pipeline built, starting");
         pipeline.set_state(gst::State::Playing).map_err(gst_err)?;
         let bus = pipeline
             .bus()
@@ -347,7 +352,16 @@ impl Recording {
             }
         }
         let started = Instant::now();
+        log::info!("linux capture: playing, waiting for the first frame");
         let thumbnail = pull_thumbnail(&sink, Duration::from_secs(3));
+        log::info!(
+            "linux capture: first frame {}",
+            if thumbnail.is_some() {
+                "received"
+            } else {
+                "missing"
+            }
+        );
         if thumbnail.is_none() {
             let _ = pipeline.set_state(gst::State::Null);
             let _ = std::fs::remove_file(&request.output);
@@ -367,6 +381,7 @@ impl Recording {
 
     pub fn stop(self) -> Result<RecordingSummary> {
         let duration = self.started.elapsed();
+        log::info!("linux capture: stopping after {duration:?}");
         self.pipeline.send_event(gst::event::Eos::new());
         let bus = self
             .pipeline
