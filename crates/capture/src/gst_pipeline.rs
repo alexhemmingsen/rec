@@ -13,6 +13,19 @@ pub const ENCODERS: &[(&str, &str)] = &[
     ("vaapih264enc", "vaapih264enc bitrate={kbps}"),
 ];
 
+/// What goes between the encoder and `mp4mux`: `h264parse` when available
+/// (gstreamer1.0-plugins-bad), else x264's own AVC output. `None` when
+/// neither works.
+pub fn parser(has_h264parse: bool, encoder: &str) -> Option<&'static str> {
+    if has_h264parse {
+        Some("h264parse")
+    } else if encoder.starts_with("x264enc") {
+        Some("video/x-h264,stream-format=avc,alignment=au")
+    } else {
+        None
+    }
+}
+
 /// The description for the first available encoder.
 pub fn encoder_description(available: impl Fn(&str) -> bool, bitrate: u32) -> Option<String> {
     ENCODERS
@@ -76,6 +89,7 @@ pub fn pipeline(
     out_width: u32,
     out_height: u32,
     encoder: &str,
+    parser: &str,
     path: &str,
     thumb_width: u32,
     thumb_height: u32,
@@ -83,7 +97,7 @@ pub fn pipeline(
     format!(
         "{source} ! queue ! videoconvert ! videorate ! video/x-raw,framerate={fps}/1 \
          ! videoscale ! video/x-raw,width={out_width},height={out_height},pixel-aspect-ratio=1/1 ! tee name=t \
-         t. ! queue ! videoconvert ! video/x-raw,format=I420 ! {encoder} ! h264parse \
+         t. ! queue ! videoconvert ! video/x-raw,format=I420 ! {encoder} ! {parser} \
          ! mp4mux faststart=true ! filesink location={} \
          t. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! videoscale \
          ! video/x-raw,format=RGBA,width={thumb_width},height={thumb_height} \
@@ -178,6 +192,7 @@ mod tests {
             800,
             600,
             "x264enc",
+            "h264parse",
             "/tmp/My Videos/rec \"1\".mp4",
             320,
             240,
@@ -189,6 +204,16 @@ mod tests {
             "{p}"
         );
         assert!(p.contains("appsink name=thumb"));
+    }
+
+    #[test]
+    fn falls_back_to_x264_avc_output_without_h264parse() {
+        assert_eq!(parser(true, "openh264enc"), Some("h264parse"));
+        assert_eq!(
+            parser(false, "x264enc tune=zerolatency"),
+            Some("video/x-h264,stream-format=avc,alignment=au")
+        );
+        assert_eq!(parser(false, "openh264enc"), None);
     }
 
     #[test]

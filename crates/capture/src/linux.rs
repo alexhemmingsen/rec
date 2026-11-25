@@ -270,6 +270,14 @@ impl Recording {
             )
         })?;
 
+        let parser =
+            gst_pipeline::parser(gst::ElementFactory::find("h264parse").is_some(), &encoder)
+                .ok_or_else(|| {
+                    CaptureError::Platform(
+                        "install gstreamer1.0-plugins-bad (h264parse) to record".into(),
+                    )
+                })?;
+
         let (source, portal) = if is_wayland() {
             let portal = open_portal()?;
             let src = gst_pipeline::pipewire_source(
@@ -309,6 +317,7 @@ impl Recording {
             out_w,
             out_h,
             &encoder,
+            parser,
             &request.output.to_string_lossy(),
             tw,
             th,

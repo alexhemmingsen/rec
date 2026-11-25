@@ -35,9 +35,27 @@ fn writes_a_valid_h264_mp4() {
                 .unwrap()
         );
     }
+    // The screen "stays still" until 3 s after the first frame.
     let duration = writer.finish(Some(base + 30_000_000)).unwrap();
     assert!((duration.as_secs_f64() - 3.0).abs() < 0.01, "{duration:?}");
-    common::assert_mp4(&path, 320, 240, 3.0);
+    // 91 frames at 30 fps: the last one lasts until 3.033 s.
+    common::assert_mp4(&path, 320, 240, 3.033);
+}
+
+#[test]
+fn fills_gaps_at_a_constant_frame_rate() {
+    let path = common::temp_path("gaps.mp4");
+    let mut writer = Mp4Writer::new(&path, 64, 64, 30).unwrap();
+    let f = frame(64, 64, 0);
+    assert!(writer.append(&f, 0).unwrap());
+    // Nothing changes for a second, then one frame.
+    assert!(writer.append(&f, 10_000_000).unwrap());
+    assert_eq!(writer.frames(), 31, "30 slots filled plus the new frame");
+    // A frame for a slot that is already written is skipped.
+    assert!(!writer.append(&f, 10_000_000 + 100).unwrap());
+    let duration = writer.finish(Some(20_000_000)).unwrap();
+    assert!((duration.as_secs_f64() - 2.0).abs() < 0.01, "{duration:?}");
+    common::assert_mp4(&path, 64, 64, 2.033);
 }
 
 #[test]

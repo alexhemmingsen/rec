@@ -57,6 +57,9 @@ pub fn configure_floating(ns_window: *mut c_void, frame: Rect, level: isize) {
     );
     window.setHasShadow(false);
     window.setOpaque(false);
+    // Explicitly NO: a transparent window otherwise passes clicks through
+    // pixels that haven't been painted yet.
+    window.setIgnoresMouseEvents(false);
     window.setFrame_display(to_cocoa(frame, primary_height(mtm)), true);
 }
 

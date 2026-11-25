@@ -708,6 +708,8 @@ p {
   position: fixed;
   inset: 0;
   cursor: crosshair;
+  outline: none;
+  touch-action: none;
 }
 .overlay-dim {
   position: absolute;

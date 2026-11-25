@@ -95,8 +95,9 @@ fn emit_error(app: &AppHandle, err: &CaptureError) {
 fn set_escape(app: &AppHandle, on: bool) {
     let gs = app.global_shortcut();
     if on {
-        if let Err(e) = gs.register(ESCAPE) {
-            log::debug!("could not register Escape: {e}");
+        match gs.register(ESCAPE) {
+            Ok(()) => log::info!("Esc registered while selecting"),
+            Err(e) => log::warn!("could not register Esc: {e}"),
         }
     } else {
         let _ = gs.unregister(ESCAPE);
@@ -114,6 +115,7 @@ pub fn is_escape(shortcut: &Shortcut) -> bool {
 pub fn on_shortcut(app: &AppHandle) {
     let state = app.state::<AppState>();
     let mut phase = state.phase.lock().unwrap();
+    log::info!("shortcut pressed while {}", phase.name());
     // Pressing the shortcut while selecting or recording does nothing.
     if !matches!(*phase, Phase::Idle) {
         return;
@@ -210,6 +212,7 @@ fn restore_after(app: &AppHandle) {
 pub fn cancel_selection(app: &AppHandle) {
     let state = app.state::<AppState>();
     let mut phase = state.phase.lock().unwrap();
+    log::info!("cancel while {}", phase.name());
     if !matches!(*phase, Phase::Selecting { .. }) {
         return;
     }
@@ -274,6 +277,10 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
         show_cursor: true,
     };
 
+    log::info!(
+        "recording display {display_id} region {region:?} to {}",
+        path.display()
+    );
     match Recording::start(request) {
         Ok(recording) => {
             let started_at_ms = Utc::now().timestamp_millis();
@@ -330,6 +337,13 @@ pub fn stop_recording(app: &AppHandle) -> Result<Item, String> {
     };
 
     let result = recording.stop();
+    log::info!(
+        "recording stopped: {:?}",
+        result
+            .as_ref()
+            .map(|s| (s.duration, s.frames))
+            .map_err(|e| e.to_string())
+    );
     *state.phase.lock().unwrap() = Phase::Idle;
     let _ = app.emit("phase-changed", "idle");
 

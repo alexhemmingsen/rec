@@ -204,12 +204,18 @@ pub(crate) fn flip_rows(src: &[u8], width: u32, height: u32) -> Vec<u8> {
 }
 
 /// An MP4 writer for BGRA frames with 100 ns timestamps.
+///
+/// Media Foundation's transcoder assumes a constant frame rate, so frames
+/// land on exact 1/fps steps from the first one, and gaps (Windows Graphics
+/// Capture only delivers frames when something changes) are filled by
+/// repeating the last frame.
 pub struct Mp4Writer {
     encoder: Option<VideoEncoder>,
     width: u32,
     height: u32,
+    interval: i64,
     first: Option<i64>,
-    last: Option<i64>,
+    last_index: Option<i64>,
     last_frame: Option<Vec<u8>>,
     frames: u64,
 }
@@ -224,6 +230,7 @@ impl Mp4Writer {
         if path.exists() {
             std::fs::remove_file(path).map_err(|e| CaptureError::Platform(e.to_string()))?;
         }
+        let fps = fps.max(1);
         let encoder = VideoEncoder::new(
             VideoSettingsBuilder::new(width, height)
                 .sub_type(VideoSettingsSubType::H264)
@@ -238,8 +245,9 @@ impl Mp4Writer {
             encoder: Some(encoder),
             width,
             height,
+            interval: TICKS_PER_SECOND / fps as i64,
             first: None,
-            last: None,
+            last_index: None,
             last_frame: None,
             frames: 0,
         })
@@ -249,43 +257,71 @@ impl Mp4Writer {
         self.frames
     }
 
-    /// Append a top-down BGRA frame (`width * height * 4` bytes).
-    pub fn append(&mut self, bgra: &[u8], ticks: i64) -> Result<bool> {
-        if let Some(last) = self.last
-            && ticks <= last
-        {
-            return Ok(false);
-        }
-        let bottom_up = flip_rows(bgra, self.width, self.height);
+    fn index(&self, ticks: i64) -> i64 {
+        let first = self.first.unwrap_or(ticks);
+        ((ticks - first) as f64 / self.interval as f64).round() as i64
+    }
+
+    fn send(&mut self, bottom_up: &[u8], index: i64) -> Result<()> {
+        let first = self.first.unwrap_or(0);
         let encoder = self.encoder.as_mut().ok_or(CaptureError::NoFrames)?;
         encoder
-            .send_frame_buffer(&bottom_up, ticks)
+            .send_frame_buffer(bottom_up, first + index * self.interval)
             .map_err(|e| CaptureError::Platform(format!("cannot write frame: {e}")))?;
-        self.first.get_or_insert(ticks);
-        self.last = Some(ticks);
-        self.last_frame = Some(bottom_up);
         self.frames += 1;
+        Ok(())
+    }
+
+    /// Repeat the last frame for every slot up to and including the one at
+    /// `ticks`.
+    pub fn fill_to(&mut self, ticks: i64) -> Result<()> {
+        let (Some(last), Some(frame)) = (self.last_index, self.last_frame.take()) else {
+            return Ok(());
+        };
+        let target = self.index(ticks);
+        let mut result = Ok(());
+        for i in last + 1..=target {
+            if let Err(e) = self.send(&frame, i) {
+                result = Err(e);
+                break;
+            }
+            self.last_index = Some(i);
+        }
+        self.last_frame = Some(frame);
+        result
+    }
+
+    /// Append a top-down BGRA frame (`width * height * 4` bytes). Returns
+    /// false when its slot is already taken.
+    pub fn append(&mut self, bgra: &[u8], ticks: i64) -> Result<bool> {
+        self.first.get_or_insert(ticks);
+        let index = self.index(ticks);
+        if self.last_index.is_some_and(|last| index <= last) {
+            return Ok(false);
+        }
+        self.fill_to(ticks - self.interval)?;
+        let bottom_up = flip_rows(bgra, self.width, self.height);
+        self.send(&bottom_up, index)?;
+        self.last_index = Some(index);
+        self.last_frame = Some(bottom_up);
         Ok(true)
     }
 
     /// Finish the file; with `end`, the last frame is held until then.
     pub fn finish(mut self, end: Option<i64>) -> Result<Duration> {
-        let (Some(first), Some(last)) = (self.first, self.last) else {
+        if self.last_index.is_none() {
             return Err(CaptureError::NoFrames);
-        };
-        let mut end_ticks = last;
-        let mut encoder = self.encoder.take().ok_or(CaptureError::NoFrames)?;
-        if let (Some(end), Some(frame)) = (end, self.last_frame.take())
-            && end > last + TICKS_PER_SECOND / 1000
-            && encoder.send_frame_buffer(&frame, end).is_ok()
-        {
-            end_ticks = end;
         }
+        if let Some(end) = end {
+            self.fill_to(end)?;
+        }
+        let last = self.last_index.unwrap_or(0);
+        let encoder = self.encoder.take().ok_or(CaptureError::NoFrames)?;
         encoder
             .finish()
             .map_err(|e| CaptureError::Platform(format!("cannot finish the video file: {e}")))?;
         Ok(Duration::from_nanos(
-            ((end_ticks - first).max(0) as u64) * 100,
+            (last * self.interval).max(0) as u64 * 100,
         ))
     }
 }
@@ -474,6 +510,26 @@ impl Recording {
             }
             std::thread::sleep(Duration::from_millis(15));
         }
+
+        // While the screen is still, keep the constant-rate stream going in
+        // real time instead of filling the whole gap at Stop.
+        let ticker_shared = Arc::downgrade(&shared);
+        let lag = 2 * TICKS_PER_SECOND / request.fps.max(1) as i64;
+        std::thread::spawn(move || {
+            while let Some(shared) = ticker_shared.upgrade() {
+                if let Ok(mut s) = shared.lock() {
+                    let Some(writer) = s.writer.as_mut() else {
+                        break;
+                    };
+                    if let Err(e) = writer.fill_to(now_ticks() - lag) {
+                        s.error.get_or_insert_with(|| e.to_string());
+                        break;
+                    }
+                }
+                drop(shared);
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        });
 
         Ok(Recording {
             control: Some(control),

@@ -58,6 +58,11 @@ drag() { # x1 y1 x2 y2
 }
 
 rm -rf "$DATA"
+# Real desktops have a window manager; it handles focus and stacking.
+if command -v openbox >/dev/null; then
+  openbox >/dev/null 2>&1 &
+  sleep 1
+fi
 "$APP" >"$LOG" 2>&1 &
 PID=$!
 wait_for "Rec's main window" 60 bash -c "xdotool search --onlyvisible --pid $PID >/dev/null 2>&1"
@@ -115,4 +120,5 @@ sleep 1
 grep -q "$FILE" "$DATA/history.json" && ok "History lists the recording" || fail "not in History"
 
 kill "$PID" 2>/dev/null || true
+echo "--- app log:"; cat "$LOG"
 say "PASS ($PASSED checks)"
