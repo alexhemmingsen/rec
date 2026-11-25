@@ -52,11 +52,15 @@ Run the full build and test suite before every commit.
 
 ### Iterating
 
-- Iterate locally: `pnpm tauri build --debug --bundles app`, then
-  `swiftc -O -o /tmp/rec-e2e e2e/macos/RecE2E.swift && /tmp/rec-e2e
-  "$PWD/target/debug/bundle/macos/Rec.app"` drives the real app on this Mac
-  (needs Accessibility for the terminal and Screen Recording for Rec). It
-  takes over the mouse for about a minute.
+- `pnpm tauri dev`: run from source with hot reload (UI instantly, Rust in
+  ~20 s). Recording in this mode counts against the terminal, which then
+  needs Screen Recording too.
+- `./scripts/dev-mac.sh`: build Rec.app (debug, ~30 s), sign it with Rec's
+  certificate so the Screen Recording permission survives rebuilds, and
+  relaunch it. Use this to try recording changes.
+- `./scripts/e2e-mac.sh`: the same build, then the end-to-end driver
+  operates the app on this Mac (~2 min; takes over the mouse; needs
+  Accessibility for the terminal). Removes its test recordings afterwards.
 - Pushes run only the quick CI (`.github/workflows/ci.yml`). The live
   capture and end-to-end tests on all three platforms
   (`.github/workflows/e2e.yml`) run on demand: `gh workflow run e2e.yml`.
