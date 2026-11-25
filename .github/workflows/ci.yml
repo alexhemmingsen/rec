@@ -32,6 +32,49 @@ jobs:
       - run: cargo test --workspace
       - run: pnpm tauri build --bundles app
 
+  macos-e2e:
+    # Drives the real app: shortcut, overlay, Esc, drag, Stop pill, clipboard,
+    # and checks the MP4 (size, length, pill not in the video).
+    name: macOS end-to-end (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri build --bundles app
+      - name: Build the test drivers
+        run: |
+          swiftc -O -o "$RUNNER_TEMP/rec-e2e" e2e/macos/RecE2E.swift
+          LIVE=$(cargo test -p rec-capture --test macos_live --no-run --message-format=json | jq -r 'select(.executable != null) | .executable' | tail -1)
+          echo "LIVE_TEST=$LIVE" >> "$GITHUB_ENV"
+      - name: Grant permissions (CI runner only)
+        run: ./e2e/macos/grant-permissions.sh "$RUNNER_TEMP/rec-e2e" "$LIVE_TEST"
+      - name: Live capture test (ScreenCaptureKit + encoder)
+        run: '"$LIVE_TEST" --ignored --nocapture --test-threads=1'
+      - name: End-to-end test
+        run: '"$RUNNER_TEMP/rec-e2e" "$PWD/target/release/bundle/macos/Rec.app"'
+      - name: Diagnostics
+        if: failure()
+        run: |
+          cat ~/Library/Logs/com.alexhem.rec/Rec.log || true
+          screencapture -x "$RUNNER_TEMP/screen.png" || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-${{ matrix.os }}
+          path: ${{ runner.temp }}/screen.png
+          if-no-files-found: ignore
+
   others:
     # Rec ships on macOS first. Windows and Linux must keep compiling and
     # passing the platform-independent tests until their capture backends land.
