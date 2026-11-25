@@ -21,6 +21,10 @@ any other agent. The agent reads the video with ffmpeg or any tool it likes.
   so it isn't in the video. If the region fills the screen, the pill sits
   inside it and is still left out of the video. The pill is the only way to
   stop.
+- Beside the pill, a pen button showing its keys, ⌘⇧D (Ctrl+Shift+D on
+  Windows and Linux): click it or press the keys to draw on the region, and
+  the lines are in the video. It turns red while on; again turns it off.
+  Rec only claims those keys while recording.
 - Stop saves `rec-YYYY-MM-DD-HH-MM-SS.mp4` (H.264, 30 fps, full Retina
   sharpness, no time limit) to Downloads or the folder chosen in Settings,
   and puts the **absolute path as plain text** on the clipboard.

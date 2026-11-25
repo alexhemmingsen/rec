@@ -1,7 +1,7 @@
 //! The three kinds of window: the main window, one selection overlay per
 //! display, and the floating Stop pill.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use rec_capture::{DisplayInfo, Rect};
 use serde::Serialize;
@@ -358,6 +358,7 @@ pub fn show_canvas(app: &AppHandle, display: &DisplayInfo, region_global: Rect) 
         layout::to_pixels(region_global, display),
         canvas_level(),
     );
+    PEN_ON.store(false, Ordering::SeqCst);
     let _ = canvas.set_ignore_cursor_events(true);
     let _ = app.emit_to(CANVAS, "canvas-reset", ());
     // Linux shows it only once the pen is used: a see-through window needs a
@@ -376,6 +377,7 @@ pub fn show_canvas(app: &AppHandle, display: &DisplayInfo, region_global: Rect) 
 /// Clear the drawing, then hide it a few frames later, so it never shows old
 /// lines (in the video, even) when it's shown again.
 pub fn hide_canvas(app: &AppHandle) {
+    PEN_ON.store(false, Ordering::SeqCst);
     let _ = app.emit_to(CANVAS, "canvas-clear", ());
     let app = app.clone();
     std::thread::spawn(move || {
@@ -387,9 +389,18 @@ pub fn hide_canvas(app: &AppHandle) {
     });
 }
 
+/// Whether the pen is on. Off whenever the drawing window is reset or hidden.
+static PEN_ON: AtomicBool = AtomicBool::new(false);
+
+/// The pen shortcut: the opposite of whatever the pen is now.
+pub fn toggle_pen(app: &AppHandle) {
+    set_pen(app, !PEN_ON.load(Ordering::SeqCst));
+}
+
 /// Turn the pen on (the drawing window takes the mouse inside the region) or
 /// off (clicks go through to the apps again).
 pub fn set_pen(app: &AppHandle, on: bool) {
+    PEN_ON.store(on, Ordering::SeqCst);
     match app.get_webview_window(CANVAS) {
         Some(canvas) => {
             let _ = canvas.set_ignore_cursor_events(!on);

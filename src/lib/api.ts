@@ -12,6 +12,8 @@ export interface AppInfo {
   shortcut: string;
   /** The keys that stop a recording: the start shortcut unless changed. */
   stopShortcut: string;
+  /** The keys that turn the pen on and off while recording; null if the start or stop shortcut uses them. */
+  penShortcut: string | null;
   saveDir: string;
   saveDirIsDefault: boolean;
   checkForUpdates: boolean;

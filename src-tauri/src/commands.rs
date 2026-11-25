@@ -32,6 +32,9 @@ pub struct AppInfo {
     pub shortcut: String,
     /// The keys that stop a recording (⌘↩ unless changed).
     pub stop_shortcut: String,
+    /// The keys that turn the pen on and off while recording (⌘⇧D); `None`
+    /// if the start or stop shortcut uses them.
+    pub pen_shortcut: Option<&'static str>,
     pub save_dir: String,
     pub save_dir_is_default: bool,
     pub check_for_updates: bool,
@@ -75,6 +78,7 @@ fn info(app: &AppHandle) -> AppInfo {
             .into_owned(),
         save_dir_is_default: settings.save_dir.is_none(),
         stop_shortcut: settings.effective_stop_shortcut().to_string(),
+        pen_shortcut: recorder::pen_shortcut(&settings),
         shortcut: settings.shortcut,
         check_for_updates: settings.check_for_updates,
         onboarding_complete: settings.onboarding_complete,

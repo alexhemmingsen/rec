@@ -187,7 +187,7 @@ let overlayLayer = 101
 func overlayVisible() -> Bool { recWindows().contains { $0.layer == overlayLayer && $0.onscreen } }
 /// The Stop pill's window (the pill plus room for its shadow).
 func pill() -> Win? {
-    recWindows().first { $0.onscreen && abs($0.bounds.width - 400) < 1 && abs($0.bounds.height - 76) < 1 }
+    recWindows().first { $0.onscreen && abs($0.bounds.width - 480) < 1 && abs($0.bounds.height - 76) < 1 }
 }
 func clipboard() -> String? { NSPasteboard.general.string(forType: .string) }
 

@@ -105,6 +105,7 @@ export function Pill() {
             }}
           >
             <img src={penIcon} width={16} height={16} alt="" draggable={false} />
+            {info?.penShortcut && <Keys shortcut={info.penShortcut} platform={info.platform} />}
           </button>
         )}
         <button

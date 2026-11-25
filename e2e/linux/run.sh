@@ -38,7 +38,7 @@ windows() {
 }
 overlay_visible() { windows | grep -q 'Rec selection'; }
 # The Stop pill's window: the pill plus room for its shadow.
-pill() { windows | awk '$4 == 400 && $5 == 76 { print; exit }'; }
+pill() { windows | awk '$4 == 480 && $5 == 76 { print; exit }'; }
 
 wait_for() { # description timeout command...
   local what=$1 timeout=$2; shift 2

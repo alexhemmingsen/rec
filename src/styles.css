@@ -939,14 +939,16 @@ p {
   align-items: center;
   gap: 8px;
 }
-/* The pen button next to the Stop pill: white like it, red with a white
-   icon while on (the same red as the Stop square). */
+/* The pen button next to the Stop pill, with its keys (⌘⇧D): white like it,
+   red with a white icon and keys while on (the same red as the Stop square). */
 .pen-button {
-  display: grid;
-  place-items: center;
-  width: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 36px;
   height: 36px;
-  padding: 0;
+  padding: 0 10px;
   border: none;
   border-radius: 18px;
   background: #fff;
@@ -967,6 +969,10 @@ p {
 .pen-button.on img {
   filter: invert(1);
 }
+.pen-button.on .key {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
 button.pill:hover {
   background: #f5f5f7;
 }
@@ -977,10 +983,12 @@ button.pill:hover {
   background: #ff453a;
   flex: none;
 }
-.pill .keys {
+.pill .keys,
+.pen-button .keys {
   gap: 3px;
 }
-.pill .key {
+.pill .key,
+.pen-button .key {
   height: 20px;
   min-width: 20px;
   padding: 0 5px;

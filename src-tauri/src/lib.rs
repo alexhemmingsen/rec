@@ -67,11 +67,14 @@ pub fn run() {
                     let app = app.clone();
                     let escape = recorder::is_escape(shortcut);
                     let stop = recorder::is_custom_stop_shortcut(&app, shortcut);
+                    let pen = recorder::is_pen_shortcut(&app, shortcut);
                     std::thread::spawn(move || {
                         if escape {
                             recorder::on_escape(&app);
                         } else if stop {
                             recorder::on_stop_shortcut(&app);
+                        } else if pen {
+                            recorder::on_pen_shortcut(&app);
                         } else {
                             recorder::on_shortcut(&app);
                         }

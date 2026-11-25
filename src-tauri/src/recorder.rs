@@ -18,6 +18,25 @@ pub const FPS: u32 = 30;
 /// A click without dragging (or a drag smaller than this) cancels.
 pub const MIN_REGION: f64 = 4.0;
 pub const ESCAPE: &str = "Escape";
+/// Turns the pen on and off while recording ("D" for draw). Fixed, not a
+/// setting. Not ⌘⇧P: that opens the command palette in VS Code and Cursor.
+pub const PEN_SHORTCUT: &str = if cfg!(target_os = "macos") {
+    "Super+Shift+D"
+} else {
+    "Control+Shift+D"
+};
+
+/// The pen's keys, unless the start or stop shortcut already uses them.
+pub fn pen_shortcut(settings: &Settings) -> Option<&'static str> {
+    let pen = PEN_SHORTCUT.parse::<Shortcut>().ok()?;
+    let taken = [
+        settings.shortcut.as_str(),
+        settings.effective_stop_shortcut(),
+    ]
+    .iter()
+    .any(|s| s.parse::<Shortcut>().is_ok_and(|s| s == pen));
+    (!taken).then_some(PEN_SHORTCUT)
+}
 
 pub enum Phase {
     Idle,
@@ -150,19 +169,22 @@ fn separate_stop_shortcut(app: &AppHandle) -> Option<String> {
     (stop != settings.shortcut).then(|| stop.to_string())
 }
 
-/// The stop shortcut is only claimed while recording, so it doesn't block
-/// those keys (⌘↩ by default) in other apps the rest of the time.
-fn set_stop_shortcut_active(app: &AppHandle, on: bool) {
-    let Some(stop) = separate_stop_shortcut(app) else {
-        return;
-    };
+/// The stop shortcut and the pen's are only claimed while recording, so they
+/// don't block those keys (⌘↩ and ⌘⇧D) in other apps the rest of the time.
+fn set_recording_shortcuts(app: &AppHandle, on: bool) {
+    let pen = pen_shortcut(&app.state::<AppState>().settings.lock().unwrap());
     let gs = app.global_shortcut();
-    if on {
-        if let Err(e) = gs.register(stop.as_str()) {
-            log::warn!("could not register the stop shortcut {stop}: {e}");
+    for keys in separate_stop_shortcut(app)
+        .into_iter()
+        .chain(pen.map(String::from))
+    {
+        if on {
+            if let Err(e) = gs.register(keys.as_str()) {
+                log::warn!("could not register {keys} while recording: {e}");
+            }
+        } else {
+            let _ = gs.unregister(keys.as_str());
         }
-    } else {
-        let _ = gs.unregister(stop.as_str());
     }
 }
 
@@ -199,7 +221,7 @@ pub fn abandon_recording(app: &AppHandle) {
     windowing::hide_canvas(app);
     windowing::hide_pill(app);
     set_escape(app, false);
-    set_stop_shortcut_active(app, false);
+    set_recording_shortcuts(app, false);
     if let Err(e) = recording.stop() {
         log::warn!("stopping the abandoned recording: {e}");
     }
@@ -228,6 +250,25 @@ pub fn on_stop_shortcut(app: &AppHandle) {
     log::info!("stop shortcut pressed; recording: {recording}");
     if recording {
         let _ = app.emit_to(windowing::PILL, "pill-stop", ());
+    }
+}
+
+/// The pressed keys are the pen's.
+pub fn is_pen_shortcut(app: &AppHandle, shortcut: &Shortcut) -> bool {
+    pen_shortcut(&app.state::<AppState>().settings.lock().unwrap())
+        .and_then(|s| s.parse::<Shortcut>().ok())
+        .is_some_and(|s| &s == shortcut)
+}
+
+/// Turn the pen on or off from the keyboard; the pen button follows.
+pub fn on_pen_shortcut(app: &AppHandle) {
+    let recording = matches!(
+        *app.state::<AppState>().phase.lock().unwrap(),
+        Phase::Recording { .. }
+    );
+    log::info!("pen shortcut pressed; recording: {recording}");
+    if recording {
+        windowing::toggle_pen(app);
     }
 }
 
@@ -433,7 +474,7 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
                 started_at_ms,
             };
             drop(phase);
-            set_stop_shortcut_active(app, true);
+            set_recording_shortcuts(app, true);
             // Esc abandons the recording.
             set_escape(app, true);
             // Keep the box you drew on screen while recording.
@@ -563,7 +604,7 @@ pub fn stop_recording(app: &AppHandle) -> Result<Item, String> {
     windowing::hide_overlays(app);
     windowing::hide_canvas(app);
     set_escape(app, false);
-    set_stop_shortcut_active(app, false);
+    set_recording_shortcuts(app, false);
 
     let result = recording.stop();
     log::info!(
@@ -684,5 +725,23 @@ mod tests {
     fn escape_shortcut_is_recognised() {
         assert!(is_escape(&"Escape".parse::<Shortcut>().unwrap()));
         assert!(!is_escape(&"Control+Shift+5".parse::<Shortcut>().unwrap()));
+    }
+
+    #[test]
+    fn pen_shortcut_steps_aside_for_the_start_and_stop_shortcuts() {
+        let settings = Settings::default();
+        assert_eq!(pen_shortcut(&settings), Some(PEN_SHORTCUT));
+        // Same keys, spelled differently.
+        let pen = PEN_SHORTCUT.replace("+D", "+KeyD");
+        let start = Settings {
+            shortcut: pen.clone(),
+            ..Settings::default()
+        };
+        assert_eq!(pen_shortcut(&start), None);
+        let stop = Settings {
+            stop_shortcut: Some(pen),
+            ..Settings::default()
+        };
+        assert_eq!(pen_shortcut(&stop), None);
     }
 }
