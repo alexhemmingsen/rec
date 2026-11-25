@@ -1,0 +1,62 @@
+# Working on Rec
+
+Rec records a screen region to MP4 and puts the file path on the clipboard.
+Read `SPEC.md` for what the product must do; it is the source of truth for
+behaviour.
+
+## Layout
+
+- `crates/capture/`: the `rec-capture` crate. Records one region of one
+  display to an H.264 MP4.
+  - `src/lib.rs`: platform-independent types and math (output size, bitrate,
+    thumbnail conversion), with unit tests.
+  - `src/macos/`: ScreenCaptureKit (`mod.rs`) feeding AVAssetWriter
+    (`writer.rs`). Rec's own windows are excluded from the capture.
+  - `src/unsupported.rs`: Windows/Linux placeholder returning
+    `CaptureError::Unsupported`.
+- `src-tauri/`: the Tauri app.
+  - `recorder.rs`: the flow (shortcut → selection → recording → Stop →
+    clipboard) and `AppState`.
+  - `windowing.rs`: main window, one selection overlay per display, the Stop
+    pill. `macos.rs` holds the AppKit details (window levels, frames,
+    handing focus back).
+  - `commands.rs`: everything the web UI calls.
+  - `settings.rs`, `history.rs`, `naming.rs`, `layout.rs`, `shortcut.rs`,
+    `ffmpeg.rs`, `updater.rs`: small modules with unit tests.
+- `src/`: React UI. `main.tsx` picks the view from the window label (`main`,
+  `overlay-<displayId>`, `pill`). Pure helpers in `src/lib/` have Vitest tests.
+- `scripts/release-macos.sh`: signed DMG + updater archive + `latest.json`.
+
+## Commands
+
+```sh
+pnpm install
+pnpm tauri dev                 # run with hot reload
+pnpm test                      # Vitest
+pnpm build                     # tsc -b + vite build (what CI runs)
+cargo test --workspace         # Rust tests, incl. real H.264 encoding
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+pnpm tauri build --bundles app # Rec.app
+```
+
+Run the full build and test suite before every commit.
+
+## Gotchas
+
+- Screen capture needs Screen Recording permission for the *responsible*
+  process: the terminal when you run from a shell, Rec.app when launched from
+  Finder. The live capture test is `#[ignore]`d for that reason:
+  `cargo test -p rec-capture --test macos_live -- --ignored`.
+- Sleeping displays aren't "active"; `displays()` falls back to the online
+  list.
+- AppKit calls must run on the main thread: use `app.run_on_main_thread`.
+- H.264 needs even dimensions and at most 4096×2304 pixels; see
+  `output_dimensions`.
+- Signing keys live outside the repo (`~/.tauri/`) and in GitHub secrets
+  (`REC_SIGN_P12_BASE64`, `REC_SIGN_P12_PASSWORD`, `TAURI_SIGNING_PRIVATE_KEY`).
+  Never commit them. Every release must be signed with the same certificate,
+  or users lose the Screen Recording permission on update.
+- To release: bump the version in `src-tauri/tauri.conf.json`, the root
+  `Cargo.toml` (`[workspace.package]`) and `package.json`, then push a
+  `vX.Y.Z` tag.

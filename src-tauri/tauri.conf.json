@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Rec",
+  "mainBinaryName": "Rec",
+  "version": "0.1.0",
+  "identifier": "com.alexhem.rec",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Rec",
+        "width": 880,
+        "height": 640,
+        "minWidth": 720,
+        "minHeight": 540,
+        "visible": false,
+        "center": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/thumbnails/*"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "category": "Utility",
+    "shortDescription": "Record a screen region, paste the file path into your AI agent.",
+    "longDescription": "Press a shortcut, drag a box and the recording starts. Click Stop and the video's path is on your clipboard, ready to paste into Claude Code, Codex, Cursor or any other agent. Everything stays on your computer.",
+    "copyright": "MIT License",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "14.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM4QkJCNkUyQUZGODAzOTAKUldTUUEvaXY0cmE3T1A4ald0c1g4OW4zS3p0Qm9YdWkwakhzQXoxZEZEQjYvNFJPc0xtVkZpMDkK",
+      "endpoints": ["https://github.com/alexhemmingsen/rec/releases/latest/download/latest.json"]
+    }
+  }
+}

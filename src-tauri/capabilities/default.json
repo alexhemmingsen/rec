@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Rec's windows: the main window, the selection overlays and the Stop pill.",
+  "windows": ["main", "pill", "overlay-*"],
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
+}
