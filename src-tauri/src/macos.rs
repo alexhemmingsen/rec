@@ -63,6 +63,11 @@ pub fn configure_floating(ns_window: *mut c_void, frame: Rect, level: isize) {
     // Explicitly NO: a transparent window otherwise passes clicks through
     // pixels that haven't been painted yet.
     window.setIgnoresMouseEvents(false);
+    // A borderless window with a see-through web view is movable by its
+    // background: the window server would treat a press-and-drag as moving
+    // the window and keep every drag and release from the app.
+    window.setMovable(false);
+    window.setMovableByWindowBackground(false);
     window.setFrame_display(to_cocoa(frame, primary_height(mtm)), true);
 }
 
