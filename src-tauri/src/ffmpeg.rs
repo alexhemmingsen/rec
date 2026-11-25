@@ -127,6 +127,7 @@ pub fn detect(os: &str) -> FfmpegStatus {
 
 /// The script Terminal runs on macOS. It finds Homebrew even when the login
 /// shell doesn't set it up, and sends people to brew.sh when it's missing.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const MACOS_INSTALL_SCRIPT: &str = r#"#!/bin/zsh -l
 clear
 for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do
