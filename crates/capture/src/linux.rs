@@ -456,6 +456,11 @@ impl Recording {
     pub fn stop(self) -> Result<RecordingSummary> {
         let duration = self.started.elapsed();
         log::info!("linux capture: stopping after {duration:?}");
+        // A closed valve drops events too, so the thumbnail branch would never
+        // see EOS and the pipeline would never report it: open it first.
+        if let Some(valve) = self.pipeline.by_name("firstframe") {
+            valve.set_property("drop", false);
+        }
         self.pipeline.send_event(gst::event::Eos::new());
         let bus = self
             .pipeline

@@ -5,26 +5,19 @@ name: End-to-end
 # before a release; pushes only run the quick CI.
 on:
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to run, comma-separated: macos, linux, windows"
+        default: "macos,linux,windows"
 
 jobs:
-  live-capture:
-    name: ${{ matrix.os }} live capture
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-24.04]
-    runs-on: ${{ matrix.os }}
+  live-capture-windows:
+    name: windows-latest live capture
+    if: contains(inputs.platforms, 'windows')
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Linux system libraries
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-            gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad gstreamer1.0-x gstreamer1.0-pipewire xvfb ffmpeg
       - name: ffmpeg (for ffprobe checks)
-        if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
@@ -32,21 +25,39 @@ jobs:
           node-version: 24
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: pnpm install --frozen-lockfile
       - name: Live capture test (Windows Graphics Capture + Media Foundation)
-        if: runner.os == 'Windows'
         run: cargo test -p rec-capture --test live -- --ignored --nocapture
+
+  live-capture-linux:
+    name: ubuntu-24.04 live capture
+    if: contains(inputs.platforms, 'linux')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Linux system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad gstreamer1.0-x gstreamer1.0-pipewire xvfb ffmpeg
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
       - name: Live capture test (GStreamer on X11)
-        if: runner.os == 'Linux'
         run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test -p rec-capture --test live -- --ignored --nocapture
 
   macos-e2e:
     # Drives the real app: shortcut, overlay, Esc, drag, Stop pill, clipboard,
     # and checks the MP4 (size, length, pill not in the video).
     name: macOS end-to-end (${{ matrix.os }})
+    if: contains(inputs.platforms, 'macos')
     strategy:
       fail-fast: false
       matrix:
@@ -95,6 +106,7 @@ jobs:
 
   linux-e2e:
     name: Linux end-to-end (X11)
+    if: contains(inputs.platforms, 'linux')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -130,6 +142,7 @@ jobs:
 
   windows-e2e:
     name: Windows end-to-end
+    if: contains(inputs.platforms, 'windows')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5

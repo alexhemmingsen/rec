@@ -85,7 +85,17 @@ export function Pill() {
   }
   return (
     <div className="pill-frame">
-      <button type="button" className={`pill ${state}`} onClick={stop} title="Stop recording">
+      <button
+        type="button"
+        className={`pill ${state}`}
+        onPointerDown={(e) => api.uiLog(`pill pointerdown at ${e.clientX},${e.clientY} state=${state}`)}
+        onPointerUp={(e) => api.uiLog(`pill pointerup at ${e.clientX},${e.clientY}`)}
+        onClick={() => {
+          api.uiLog(`pill click, state=${state}`);
+          stop();
+        }}
+        title="Stop recording"
+      >
         <span className="pill-stop" aria-hidden />
         <span>{state === "saving" ? "Saving…" : "Stop and save"}</span>
         {state === "recording" && info && <Keys shortcut={info.stopShortcut} platform={info.platform} />}
