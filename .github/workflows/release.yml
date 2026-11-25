@@ -111,8 +111,8 @@ jobs:
 
   linux:
     needs: version
-    # The oldest supported Ubuntu: packages built here run on newer systems.
-    runs-on: ubuntu-22.04
+    # Same image CI tests on; the packages need Ubuntu 24.04 / glibc 2.39 or newer.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: System libraries
