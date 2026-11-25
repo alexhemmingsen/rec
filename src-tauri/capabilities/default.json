@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Rec's windows: the main window, the selection overlays and the Stop pill.",
-  "windows": ["main", "pill", "overlay-*"],
+  "description": "Rec's windows: the main window, the selection overlays, the Stop pill and the pen's drawing window.",
+  "windows": ["main", "pill", "canvas", "overlay-*"],
   "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

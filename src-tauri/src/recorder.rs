@@ -196,6 +196,7 @@ pub fn abandon_recording(app: &AppHandle) {
     };
     log::info!("recording abandoned with Esc");
     windowing::hide_overlays(app);
+    windowing::hide_canvas(app);
     windowing::hide_pill(app);
     set_escape(app, false);
     set_stop_shortcut_active(app, false);
@@ -405,6 +406,9 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
         && pill.x + pill.width > 0.0
         && pill.y + pill.height > 0.0)
         .then_some(pill);
+    // The pen's drawing window goes over the region before capture starts,
+    // so the capture can include it.
+    windowing::show_canvas(app, &display, global);
     let request = RecordRequest {
         display_id,
         region,
@@ -412,6 +416,7 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
         fps: FPS,
         show_cursor: true,
         exclude,
+        include_windows: vec![windowing::CANVAS_TITLE.to_string()],
     };
 
     log::info!(
@@ -446,6 +451,7 @@ pub fn start_recording(app: &AppHandle, display_id: u32, region: Rect) -> Result
             *phase = Phase::Idle;
             drop(phase);
             windowing::hide_overlays(app);
+            windowing::hide_canvas(app);
             restore_after(app);
             windowing::show_main(app);
             emit_error(app, &err);
@@ -555,6 +561,7 @@ pub fn stop_recording(app: &AppHandle) -> Result<Item, String> {
         }
     };
     windowing::hide_overlays(app);
+    windowing::hide_canvas(app);
     set_escape(app, false);
     set_stop_shortcut_active(app, false);
 

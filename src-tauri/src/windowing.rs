@@ -13,6 +13,11 @@ use crate::layout;
 
 pub const MAIN: &str = "main";
 pub const PILL: &str = "pill";
+/// The pen's drawing surface over the recorded region.
+pub const CANVAS: &str = "canvas";
+/// macOS's capture finds the drawing window by this title, to keep it in
+/// the video while leaving Rec's other windows out.
+pub const CANVAS_TITLE: &str = "Rec drawing";
 const OVERLAY_PREFIX: &str = "overlay-";
 
 pub fn overlay_label(display_id: u32) -> String {
@@ -36,6 +41,7 @@ fn floating_builder<'a>(
     app: &'a AppHandle,
     label: &'a str,
     title: &str,
+    in_video: bool,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
     let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
         .title(title)
@@ -53,7 +59,9 @@ fn floating_builder<'a>(
     // Keeps the window out of screen captures on Windows
     // (WDA_EXCLUDEFROMCAPTURE). macOS excludes Rec's windows by app instead.
     #[cfg(windows)]
-    let builder = builder.content_protected(true);
+    let builder = builder.content_protected(!in_video);
+    #[cfg(not(windows))]
+    let _ = in_video;
     #[cfg(target_os = "macos")]
     let builder = builder.accept_first_mouse(true);
     builder
@@ -108,7 +116,7 @@ pub fn prepare_overlays(app: &AppHandle, displays: &[DisplayInfo]) -> tauri::Res
         );
         let window = match app.get_webview_window(&label) {
             Some(w) => w,
-            None => floating_builder(app, &label, "Rec selection")
+            None => floating_builder(app, &label, "Rec selection", false)
                 .inner_size(d.frame.width, d.frame.height)
                 .position(d.frame.x, d.frame.y)
                 .build()?,
@@ -242,7 +250,7 @@ pub fn frame_overlay(app: &AppHandle, display_id: u32, region: Rect) {
             let w = window.clone();
             let _ = app.run_on_main_thread(move || {
                 if let Ok(ns) = w.ns_window() {
-                    crate::macos::set_level(ns, crate::macos::PILL_LEVEL - 1);
+                    crate::macos::set_level(ns, crate::macos::PILL_LEVEL - 2);
                 }
             });
         }
@@ -289,7 +297,7 @@ pub struct PillStarted {
 pub fn ensure_pill(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     match app.get_webview_window(PILL) {
         Some(w) => Ok(w),
-        None => floating_builder(app, PILL, "Rec")
+        None => floating_builder(app, PILL, "Rec", false)
             .inner_size(layout::PILL_WIDTH, layout::PILL_HEIGHT)
             .build(),
     }
@@ -309,6 +317,97 @@ pub fn show_pill(app: &AppHandle, display: &DisplayInfo, started_at_ms: i64) -> 
     );
     let _ = app.emit_to(PILL, "pill-started", PillStarted { started_at_ms });
     pill.show()
+}
+
+pub fn ensure_canvas(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    match app.get_webview_window(CANVAS) {
+        Some(w) => Ok(w),
+        None => {
+            let builder =
+                floating_builder(app, CANVAS, CANVAS_TITLE, true).inner_size(100.0, 100.0);
+            // Drawing shouldn't take the keyboard from the app being recorded.
+            #[cfg(windows)]
+            let builder = builder.focusable(false);
+            builder.build()
+        }
+    }
+}
+
+fn canvas_level() -> isize {
+    #[cfg(target_os = "macos")]
+    return crate::macos::PILL_LEVEL - 1;
+    #[cfg(not(target_os = "macos"))]
+    0
+}
+
+/// The pen's drawing surface: a see-through window exactly over the recorded
+/// region, between the frame and the Stop pill. Unlike Rec's other windows
+/// it's in the video, and it lets clicks through until the pen is on.
+pub fn show_canvas(app: &AppHandle, display: &DisplayInfo, region_global: Rect) {
+    let canvas = match ensure_canvas(app) {
+        Ok(w) => w,
+        Err(e) => {
+            log::error!("cannot create the drawing window: {e}");
+            return;
+        }
+    };
+    place(
+        app,
+        &canvas,
+        region_global,
+        layout::to_pixels(region_global, display),
+        canvas_level(),
+    );
+    let _ = canvas.set_ignore_cursor_events(true);
+    let _ = app.emit_to(CANVAS, "canvas-reset", ());
+    // Linux shows it only once the pen is used: a see-through window needs a
+    // compositor, and without one it would cover the recording.
+    if !cfg!(target_os = "linux") {
+        let _ = canvas.show();
+    }
+    log::info!(
+        "drawing window over {region_global:?}: visible={:?} position={:?} size={:?}",
+        canvas.is_visible().ok(),
+        canvas.outer_position().ok(),
+        canvas.outer_size().ok()
+    );
+}
+
+/// Clear the drawing, then hide it a few frames later, so it never shows old
+/// lines (in the video, even) when it's shown again.
+pub fn hide_canvas(app: &AppHandle) {
+    let _ = app.emit_to(CANVAS, "canvas-clear", ());
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        if let Some(w) = app.get_webview_window(CANVAS) {
+            let _ = w.set_ignore_cursor_events(true);
+            let _ = w.hide();
+        }
+    });
+}
+
+/// Turn the pen on (the drawing window takes the mouse inside the region) or
+/// off (clicks go through to the apps again).
+pub fn set_pen(app: &AppHandle, on: bool) {
+    match app.get_webview_window(CANVAS) {
+        Some(canvas) => {
+            let _ = canvas.set_ignore_cursor_events(!on);
+            if on && cfg!(target_os = "linux") {
+                let _ = canvas.show();
+            }
+            log::info!(
+                "pen {}: drawing window visible={:?} position={:?} size={:?}",
+                if on { "on" } else { "off" },
+                canvas.is_visible().ok(),
+                canvas.outer_position().ok(),
+                canvas.outer_size().ok()
+            );
+        }
+        None => log::warn!("pen toggled but there is no drawing window"),
+    }
+    let _ = app.emit_to(CANVAS, "pen", on);
+    let _ = app.emit_to(PILL, "pen", on);
 }
 
 pub fn hide_pill(app: &AppHandle) {

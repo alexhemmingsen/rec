@@ -110,7 +110,7 @@ function Wins { [E2E]::Windows($proc.Id) | ForEach-Object { $p = $_ -split ' ', 
 function Overlay { Wins | Where-Object { $_.Title -eq 'Rec selection' } | Select-Object -First 1 }
 $scale = [E2E]::Scale()
 # The Stop pill's window: the pill plus room for its shadow.
-$pillW = [math]::Round(340 * $scale); $pillH = [math]::Round(76 * $scale)
+$pillW = [math]::Round(400 * $scale); $pillH = [math]::Round(76 * $scale)
 function Pill { Wins | Where-Object { [math]::Abs($_.W - $pillW) -le 2 -and [math]::Abs($_.H - $pillH) -le 2 } | Select-Object -First 1 }
 function Clip { try { (Get-Clipboard -Raw) } catch { "" } }
 # Screenshots of each step for people to look at (REC_E2E_SHOTS = a folder).

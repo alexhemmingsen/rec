@@ -12,7 +12,7 @@ pub const PILL_TOP: f64 = 48.0;
 /// Room around the pill for its shadow; the window is that much larger.
 pub const PILL_MARGIN: f64 = 20.0;
 /// The pill window (pill plus margin).
-pub const PILL_WIDTH: f64 = 340.0;
+pub const PILL_WIDTH: f64 = 400.0;
 pub const PILL_HEIGHT: f64 = 36.0 + 2.0 * PILL_MARGIN;
 
 /// The Stop pill's window: centred at the top of `display`.

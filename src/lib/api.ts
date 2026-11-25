@@ -68,6 +68,7 @@ export const api = {
   accessibilityStatus: () => invoke<Permission>("accessibility_status"),
   requestAccessibility: () => invoke<Permission>("request_accessibility"),
   openAccessibilitySettings: () => invoke<void>("open_accessibility_settings"),
+  setPen: (on: boolean) => invoke<void>("set_pen", { on }),
   relaunch: () => invoke<void>("relaunch"),
   checkFfmpeg: () => invoke<FfmpegStatus>("check_ffmpeg"),
   installFfmpeg: () => invoke<void>("install_ffmpeg"),

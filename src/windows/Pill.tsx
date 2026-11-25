@@ -4,6 +4,7 @@ import { api, type AppInfo } from "../lib/api";
 import { Keys } from "../components/Keys";
 import { formatDuration } from "../lib/format";
 import checkIcon from "../assets/icons/check.svg";
+import penIcon from "../assets/icons/pen.svg";
 
 type State = "recording" | "saving" | "done" | "failed";
 
@@ -14,6 +15,8 @@ export function Pill() {
   const [state, setState] = useState<State>("recording");
   // For the stop shortcut's keys.
   const [info, setInfo] = useState<AppInfo | null>(null);
+  // Drawing on the recording (the pen button).
+  const [pen, setPen] = useState(false);
 
   useEffect(() => {
     api.recordingStartedAt().then((t) => t && setStartedAt(t)).catch(() => {});
@@ -21,11 +24,14 @@ export function Pill() {
     const unlisten = getCurrentWebviewWindow().listen<{ startedAtMs: number }>("pill-started", (e) => {
       setStartedAt(e.payload.startedAtMs);
       setState("recording");
+      setPen(false);
       setNow(Date.now());
       api.appInfo().then(setInfo).catch(() => {});
     });
+    const unlistenPen = getCurrentWebviewWindow().listen<boolean>("pen", (e) => setPen(e.payload));
     return () => {
       unlisten.then((f) => f());
+      unlistenPen.then((f) => f());
     };
   }, []);
 
@@ -85,22 +91,39 @@ export function Pill() {
   }
   return (
     <div className="pill-frame">
-      <button
-        type="button"
-        className={`pill ${state}`}
-        onPointerDown={(e) => api.uiLog(`pill pointerdown at ${e.clientX},${e.clientY} state=${state}`)}
-        onPointerUp={(e) => api.uiLog(`pill pointerup at ${e.clientX},${e.clientY}`)}
-        onClick={() => {
-          api.uiLog(`pill click, state=${state}`);
-          stop();
-        }}
-        title="Stop recording"
-      >
-        <span className="pill-stop" aria-hidden />
-        <span>{state === "saving" ? "Saving…" : "Stop and save"}</span>
-        {state === "recording" && info && <Keys shortcut={info.stopShortcut} platform={info.platform} />}
-        <span className="pill-time">{formatDuration(elapsed)}</span>
-      </button>
+      <div className="pill-row">
+        {state === "recording" && (
+          <button
+            type="button"
+            className={`pen-button${pen ? " on" : ""}`}
+            aria-pressed={pen}
+            title={pen ? "Stop drawing" : "Draw on the recording"}
+            onClick={() => {
+              const next = !pen;
+              setPen(next);
+              api.setPen(next).catch(() => {});
+            }}
+          >
+            <img src={penIcon} width={16} height={16} alt="" draggable={false} />
+          </button>
+        )}
+        <button
+          type="button"
+          className={`pill ${state}`}
+          onPointerDown={(e) => api.uiLog(`pill pointerdown at ${e.clientX},${e.clientY} state=${state}`)}
+          onPointerUp={(e) => api.uiLog(`pill pointerup at ${e.clientX},${e.clientY}`)}
+          onClick={() => {
+            api.uiLog(`pill click, state=${state}`);
+            stop();
+          }}
+          title="Stop recording"
+        >
+          <span className="pill-stop" aria-hidden />
+          <span>{state === "saving" ? "Saving…" : "Stop and save"}</span>
+          {state === "recording" && info && <Keys shortcut={info.stopShortcut} platform={info.platform} />}
+          <span className="pill-time">{formatDuration(elapsed)}</span>
+        </button>
+      </div>
     </div>
   );
 }

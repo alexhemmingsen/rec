@@ -113,6 +113,7 @@ body {
 html[data-window="overlay"],
 html[data-window="overlay"] body,
 html[data-window="pill"],
+html[data-window="canvas"] body,
 html[data-window="pill"] body {
   background: transparent;
   overflow: hidden;
@@ -901,6 +902,25 @@ p {
   white-space: nowrap;
 }
 
+/* ---------- Pen drawing ---------- */
+
+.canvas-root {
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+}
+.canvas-root canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* While drawing: a crosshair, and a background faint enough to be invisible
+   but solid enough that Windows doesn't let clicks fall through. */
+.canvas-root.pen {
+  cursor: crosshair;
+  background: rgba(0, 0, 0, 0.004);
+}
+
 /* ---------- Pill ---------- */
 
 .pill-frame {
@@ -913,6 +933,39 @@ p {
 .pill {
   padding: 0 16px 0 14px;
   cursor: default;
+}
+.pill-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* The pen button next to the Stop pill: white like it, red with a white
+   icon while on (the same red as the Stop square). */
+.pen-button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.12),
+    0 4px 16px rgba(0, 0, 0, 0.18);
+  cursor: default;
+}
+.pen-button:hover {
+  background: #f5f5f7;
+}
+.pen-button.on {
+  background: #ff453a;
+}
+.pen-button.on:hover {
+  background: #e83e34;
+}
+.pen-button.on img {
+  filter: invert(1);
 }
 button.pill:hover {
   background: #f5f5f7;

@@ -140,6 +140,9 @@ pub fn run() {
             if let Err(e) = windowing::ensure_pill(&handle) {
                 log::error!("cannot prepare the Stop pill: {e}");
             }
+            if let Err(e) = windowing::ensure_canvas(&handle) {
+                log::error!("cannot prepare the drawing window: {e}");
+            }
 
             if show_window {
                 windowing::show_main(&handle);
@@ -170,6 +173,7 @@ pub fn run() {
             commands::set_shortcut,
             commands::set_shortcut_suspended,
             commands::set_stop_shortcut,
+            commands::set_pen,
             commands::choose_save_dir,
             commands::reset_save_dir,
             commands::set_open_at_login,

@@ -229,7 +229,13 @@ fn shareable_content() -> Result<Retained<SCShareableContent>> {
         };
         let _ = tx.send(SendBox(result));
     });
-    unsafe { SCShareableContent::getShareableContentWithCompletionHandler(&handler) };
+    // All windows, not only on-screen ones: a window to include in the video
+    // (the pen drawing) may not be on screen yet when recording starts.
+    unsafe {
+        SCShareableContent::getShareableContentExcludingDesktopWindows_onScreenWindowsOnly_completionHandler(
+            false, false, &handler,
+        )
+    };
     let SendBox(result) = wait(rx, "the list of displays", 10)?;
     result.map_err(|e| {
         if CGPreflightScreenCaptureAccess() {
@@ -298,12 +304,29 @@ impl Recording {
                 );
             }
             let excluded = NSArray::from_slice(&own_refs);
-            let no_windows: Retained<NSArray<SCWindow>> = NSArray::new();
+            // ...except the windows that belong in the video (the pen drawing).
+            let keep: Vec<Retained<SCWindow>> = content
+                .windows()
+                .iter()
+                .filter(|w| {
+                    let own = w.owningApplication().is_some_and(|a| a.processID() == pid);
+                    let title = w.title().map(|t| t.to_string()).unwrap_or_default();
+                    own && request.include_windows.contains(&title)
+                })
+                .collect();
+            if keep.len() < request.include_windows.len() {
+                log::warn!(
+                    "only {} of the windows to include are shareable",
+                    keep.len()
+                );
+            }
+            let keep_refs: Vec<&SCWindow> = keep.iter().map(|w| &**w).collect();
+            let keep = NSArray::from_slice(&keep_refs);
             let filter = SCContentFilter::initWithDisplay_excludingApplications_exceptingWindows(
                 SCContentFilter::alloc(),
                 &display,
                 &excluded,
-                &no_windows,
+                &keep,
             );
 
             let display_frame = display.frame();

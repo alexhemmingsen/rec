@@ -281,6 +281,13 @@ pub fn open_accessibility_settings(app: AppHandle) {
     }
 }
 
+/// Turn the pen on or off while recording (the pen button in the Stop pill).
+#[tauri::command]
+pub fn set_pen(app: AppHandle, on: bool) {
+    log::info!("pen {}", if on { "on" } else { "off" });
+    crate::windowing::set_pen(&app, on);
+}
+
 #[tauri::command]
 pub fn relaunch(app: AppHandle) {
     app.restart();

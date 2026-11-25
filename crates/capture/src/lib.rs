@@ -112,6 +112,10 @@ pub struct RecordRequest {
     /// from the capture themselves; Linux can't, so it covers this area with
     /// what was there when recording started.
     pub exclude: Option<Rect>,
+    /// Titles of Rec's own windows that must appear in the video even though
+    /// Rec's other windows are left out: the pen drawing over the region.
+    /// macOS only; other platforms capture these windows anyway.
+    pub include_windows: Vec<String>,
 }
 
 /// A small RGBA image, used for the History thumbnail.
@@ -372,6 +376,7 @@ mod tests {
             fps: 30,
             show_cursor: true,
             exclude: None,
+            include_windows: Vec::new(),
         })
         .err()
         .unwrap();

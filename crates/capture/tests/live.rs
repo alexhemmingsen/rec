@@ -32,6 +32,7 @@ fn records_a_region_of_the_main_display() {
         fps: 30,
         show_cursor: true,
         exclude: None,
+        include_windows: Vec::new(),
     })
     .unwrap();
     std::thread::sleep(Duration::from_millis(2000));
