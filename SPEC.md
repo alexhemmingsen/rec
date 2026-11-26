@@ -52,8 +52,7 @@ any other agent. The agent reads the video with ffmpeg or any tool it likes.
 - Everything stays on your computer: no account, no cloud, no analytics, no
   crash reports. The only network call is an update check against GitHub
   Releases, and it can be turned off.
-- Not in v1: editing or trimming, audio, GIF, webcam, drawing on the video,
-  uploads.
+- Not in v1: editing or trimming, audio, GIF, webcam, uploads.
 
 ## Tech and release
 

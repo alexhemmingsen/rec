@@ -1,7 +1,7 @@
 {
   "name": "rec",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Record a screen region, paste the file path into your AI agent.",
   "license": "MIT",

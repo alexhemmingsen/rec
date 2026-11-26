@@ -440,10 +440,19 @@ p {
   /* Room at the top for the window's traffic-light buttons. */
   padding: 48px 8px 16px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .sidebar-nav {
   display: flex;
   flex-direction: column;
+}
+/* "Version 0.3.0" at the bottom of the sidebar. */
+.sidebar-foot {
+  margin-top: auto;
+  padding: 0 16px;
+  font-size: 11px;
+  color: var(--d-muted);
 }
 .nav-item {
   display: flex;

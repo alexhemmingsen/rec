@@ -88,6 +88,7 @@ export function Main() {
             </button>
           ))}
         </div>
+        <div className="sidebar-foot">Version {info.version}</div>
       </nav>
       <main className="content">
         <div className="drag-strip" data-tauri-drag-region />
