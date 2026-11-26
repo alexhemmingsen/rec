@@ -51,6 +51,8 @@ wait_for() { # description timeout command...
   fail "timed out waiting for: $what"
 }
 not() { ! "$@"; }
+# DEBUG: the overlay's real X geometry and map state.
+geom() { say "geom[$1]: $(windows | grep 'Rec selection' || echo 'not visible') | $(for id in $(xdotool search --name '^Rec selection$' 2>/dev/null); do xwininfo -id "$id" 2>/dev/null | grep -E 'Absolute upper-left X|Absolute upper-left Y|Width|Height|Map State' | tr -s ' ' | tr '\n' ' '; done)"; }
 has_pill() { [[ -n "$(pill)" ]]; }
 clipboard() { xclip -o -selection clipboard 2>/dev/null || true; }
 has_path() { [[ "$(clipboard)" == *.mp4 ]]; }
@@ -92,6 +94,7 @@ wait_for "Esc to cancel" 5 not overlay_visible
 printf '' | xclip -selection clipboard
 xdotool key ctrl+shift+5
 wait_for "the overlay again" 8 overlay_visible
+geom after-show-3
 sleep 0.5
 drag 160 140 560 440
 wait_for "the Stop pill" 10 has_pill
@@ -123,12 +126,15 @@ wait_for "the pill to go away" 8 not has_pill
 printf '' | xclip -selection clipboard
 xdotool key ctrl+shift+5
 wait_for "the overlay for the click test" 8 overlay_visible
+geom after-show-4
 sleep 0.5
 xdotool mousemove 900 500 click 1
 sleep 1
+geom after-click
 overlay_visible && ok "a click doesn't cancel the selection" || fail "a click cancelled the selection"
 xdotool key Escape
 wait_for "Esc to cancel after the click" 5 not overlay_visible
+geom after-esc-4
 sleep 1
 ! has_pill && [[ -z "$(clipboard)" ]] && ok "nothing was recorded" || fail "something was recorded"
 
@@ -137,6 +143,9 @@ sleep 1
 printf '' | xclip -selection clipboard
 xdotool key ctrl+shift+5
 wait_for "the overlay for the full-screen test" 8 overlay_visible
+geom after-show-5
+sleep 1
+geom after-show-5-1s
 sleep 0.5
 drag 2 2 $((SW - 3)) $((SH - 3))
 wait_for "the Stop pill (full screen)" 10 has_pill
