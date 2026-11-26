@@ -317,6 +317,45 @@ pub fn relaunch(app: AppHandle) {
     app.restart();
 }
 
+/// Onboarding, once Screen Recording is on: record a 16×16 corner of the
+/// screen for a moment and throw it away. Since macOS 15, an app's first
+/// recording without Apple's window picker brings up macOS's "bypass the
+/// system private window picker" prompt; this puts it in onboarding instead
+/// of in (and on top of) your first real recording.
+#[tauri::command]
+pub async fn warm_up_capture() {
+    if !cfg!(target_os = "macos")
+        || rec_capture::permission_status() != rec_capture::Permission::Granted
+    {
+        return;
+    }
+    let _ = tauri::async_runtime::spawn_blocking(|| {
+        let displays = rec_capture::displays();
+        let Some(display) = displays.iter().find(|d| d.is_main).or(displays.first()) else {
+            return;
+        };
+        let request = rec_capture::RecordRequest {
+            display_id: display.id,
+            region: rec_capture::Rect::new(0.0, 0.0, 16.0, 16.0),
+            output: std::env::temp_dir().join("rec-warm-up.mp4"),
+            fps: 30,
+            show_cursor: false,
+            exclude: None,
+            include_windows: Vec::new(),
+        };
+        match rec_capture::Recording::start(request) {
+            Ok(recording) => {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                // Deletes the file.
+                recording.cancel();
+                log::info!("warm-up capture done");
+            }
+            Err(e) => log::warn!("warm-up capture failed: {e}"),
+        }
+    })
+    .await;
+}
+
 #[tauri::command]
 pub async fn check_ffmpeg() -> FfmpegStatus {
     tauri::async_runtime::spawn_blocking(|| ffmpeg::detect(platform()))

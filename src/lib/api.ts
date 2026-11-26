@@ -66,6 +66,8 @@ export const api = {
   completeOnboarding: () => invoke<AppInfo>("complete_onboarding"),
   permissionStatus: () => invoke<Permission>("permission_status"),
   requestScreenPermission: () => invoke<Permission>("request_screen_permission"),
+  /** Onboarding: a throwaway capture, so macOS asks its screen-capture question now. */
+  warmUpCapture: () => invoke<void>("warm_up_capture"),
   openPermissionSettings: () => invoke<void>("open_permission_settings"),
   accessibilityStatus: () => invoke<Permission>("accessibility_status"),
   requestAccessibility: () => invoke<Permission>("request_accessibility"),

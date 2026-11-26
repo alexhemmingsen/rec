@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorText, type AppInfo, type HistoryItem } from "../lib/api";
 import { ShortcutRecorder } from "../components/ShortcutRecorder";
@@ -91,6 +91,15 @@ function Welcome({ onNext }: { onNext: () => void }) {
 function PermissionStep({ info, onInfo, onNext }: { info: AppInfo; onInfo: (i: AppInfo) => void; onNext: () => void }) {
   const ready =
     !info.recordingSupported || (info.permission !== "notGranted" && info.accessibility !== "notGranted");
+  // Once Screen Recording is on: a throwaway capture, so macOS asks its
+  // "bypass the private window picker" question here, not over your first
+  // recording.
+  const warmedUp = useRef(false);
+  useEffect(() => {
+    if (info.platform !== "macos" || info.permission !== "granted" || warmedUp.current) return;
+    warmedUp.current = true;
+    api.warmUpCapture().catch(() => {});
+  }, [info.platform, info.permission]);
   return (
     <div className="ob-card wide">
       <h1>Allow access</h1>

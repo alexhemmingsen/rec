@@ -197,6 +197,7 @@ pub fn run() {
             commands::complete_onboarding,
             commands::permission_status,
             commands::request_screen_permission,
+            commands::warm_up_capture,
             commands::open_permission_settings,
             commands::accessibility_status,
             commands::request_accessibility,
