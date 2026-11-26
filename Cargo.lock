@@ -3805,7 +3805,7 @@ dependencies = [
 
 [[package]]
 name = "rec"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "ashpd",
  "block2",
@@ -3838,7 +3838,7 @@ dependencies = [
 
 [[package]]
 name = "rec-capture"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "ashpd",
  "block2",
