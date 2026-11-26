@@ -29,7 +29,7 @@ echo "==> Building Rec $VERSION"
 pnpm tauri build --bundles app
 
 rm -rf "$OUT"
-mkdir -p "$OUT/stage" "$OUT/dmg"
+mkdir -p "$OUT/stage"
 cp -R target/release/bundle/macos/Rec.app "$OUT/stage/"
 APP="$OUT/stage/Rec.app"
 
@@ -50,9 +50,13 @@ codesign --verify --deep --strict "$APP"
 codesign -dvv "$APP" 2>&1 | grep -E '^(Identifier|Authority|Signature)=' || true
 
 echo "==> Creating the DMG"
-cp -R "$APP" "$OUT/dmg/"
-ln -s /Applications "$OUT/dmg/Applications"
-hdiutil create -quiet -volname "Rec" -srcfolder "$OUT/dmg" -ov -format UDZO "$OUT/Rec_${VERSION}_aarch64.dmg"
+# The usual window: Rec, an arrow, Applications (scripts/dmg). dmgbuild
+# writes the layout itself, without driving Finder, so it works on CI too.
+python3 -m venv "$OUT/venv"
+"$OUT/venv/bin/pip" install -q --disable-pip-version-check --require-hashes -r scripts/dmg/requirements.txt
+tiffutil -cathidpicheck scripts/dmg/background.png scripts/dmg/background@2x.png -out "$OUT/background.tiff" 2>/dev/null
+"$OUT/venv/bin/dmgbuild" -s scripts/dmg/settings.py -D app="$APP" -D background="$OUT/background.tiff" \
+  Rec "$OUT/Rec_${VERSION}_aarch64.dmg"
 if [[ -n "$NOTARIZE" ]]; then
   # Stapling the ticket to a DMG needs the DMG itself signed. Only with the
   # Developer ID: the self-signed certificate isn't trusted, so signing the
@@ -74,6 +78,6 @@ else
   echo "==> No updater key given: the updater archive is unsigned"
 fi
 
-rm -rf "$OUT/stage" "$OUT/dmg"
+rm -rf "$OUT/stage" "$OUT/venv" "$OUT/background.tiff"
 echo "==> Done:"
 ls -la "$OUT"

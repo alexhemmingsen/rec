@@ -38,6 +38,10 @@ jobs:
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # dmgbuild (the DMG window's layout) needs Python 3.10+.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
       - run: pnpm install --frozen-lockfile
       - run: pnpm test && cargo test --workspace
       - name: Install rcodesign
