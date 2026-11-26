@@ -1,29 +1,53 @@
 name: Release
 
-# Push a tag like v0.2.0 (matching the version in src-tauri/tauri.conf.json)
-# to build, sign and publish Rec for macOS, Windows and Linux.
+# Every push to main with a new version releases it: when the version in
+# src-tauri/tauri.conf.json (and Cargo.toml, package.json) has no vX.Y.Z
+# release yet, this builds, signs and notarizes Rec for macOS, Windows and
+# Linux, publishes it, and creates the tag. Pushes that keep the version
+# (docs, CI, work towards the next release) stop after the first job.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  # Retry a release that failed part-way (same rule: only an unreleased version).
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+# One release run at a time: a second push waits, then sees the version is out.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
     steps:
       - uses: actions/checkout@v5
       - id: v
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != v$VERSION"; exit 1; }
+          PKG=$(node -p "require('./package.json').version")
+          CARGO=$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          if [ "$PKG" != "$VERSION" ] || [ "$CARGO" != "$VERSION" ]; then
+            echo "::error::versions differ: tauri.conf.json $VERSION, package.json $PKG, Cargo.toml $CARGO"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            echo "v$VERSION is already released: nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Releasing v$VERSION."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
 
   macos:
     needs: version
+    if: needs.version.outputs.release == 'true'
     runs-on: macos-latest
     env:
       # Not RCODESIGN_*: rcodesign reads those variables as its own config.
@@ -83,6 +107,7 @@ jobs:
 
   windows:
     needs: version
+    if: needs.version.outputs.release == 'true'
     runs-on: windows-latest
     defaults:
       run:
@@ -130,6 +155,7 @@ jobs:
 
   linux:
     needs: version
+    if: needs.version.outputs.release == 'true'
     # Same image CI tests on; the packages need Ubuntu 24.04 / glibc 2.39 or newer.
     runs-on: ubuntu-24.04
     steps:
@@ -166,6 +192,7 @@ jobs:
 
   publish:
     needs: [version, macos, windows, linux]
+    if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -190,6 +217,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -la dist
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          # Creates the tag vX.Y.Z on this commit.
+          gh release create "v${{ needs.version.outputs.version }}" dist/* \
+            --target "$GITHUB_SHA" \
             --title "Rec ${{ needs.version.outputs.version }}" \
             --notes-file .github/release-notes.md

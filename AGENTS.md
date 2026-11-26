@@ -67,7 +67,9 @@ Run the full build and test suite before every commit.
   Run them before a release. GitHub's macOS VMs drop the mouse on its way
   to Rec, so there CI runs only the keyboard steps; before a release, also
   run `./scripts/e2e-mac.sh` on a real Mac for the rest.
-- Release only when asked: push a `vX.Y.Z` tag.
+- Releases are automatic: a push to main that carries a new version
+  (see below) builds, signs, notarizes and publishes it. Bump the version
+  only when asked to release; other pushes just run CI.
 
 ## Gotchas
 
@@ -96,5 +98,7 @@ Run the full build and test suite before every commit.
   Signing with another team's certificate makes users grant the permission
   again.
 - To release: bump the version in `src-tauri/tauri.conf.json`, the root
-  `Cargo.toml` (`[workspace.package]`) and `package.json`, then push a
-  `vX.Y.Z` tag.
+  `Cargo.toml` (`[workspace.package]`) and `package.json` (all three the
+  same, or the release stops), and push to main. `release.yml` sees that
+  `vX.Y.Z` doesn't exist yet, releases it and creates the tag; pushes
+  that keep the version stop after its first job.
