@@ -88,33 +88,33 @@ export function Main() {
             </button>
           ))}
         </div>
-        <div className="sidebar-foot">Version {info.version}</div>
+        <div className="sidebar-foot">
+          {update && (
+            <div className="sidebar-update" role="status">
+              <p>Rec {update.version} is available.</p>
+              <button type="button" className="button primary" disabled={updating} onClick={installUpdate}>
+                {updating ? "Updating…" : "Restart to update"}
+              </button>
+            </div>
+          )}
+          <div className="sidebar-version">Version {info.version}</div>
+        </div>
       </nav>
       <main className="content">
         <div className="drag-strip" data-tauri-drag-region />
-        {(error || update) && (
+        {error && (
           <div className="banners">
-            {error && (
-              <div className="banner" role="alert">
-                <p>{error.message}</p>
-                {error.permission && page !== "general" && (
-                  <button type="button" className="button" onClick={() => setPage("general")}>
-                    Open General
-                  </button>
-                )}
-                <button type="button" className="button" onClick={() => setError(null)}>
-                  Dismiss
+            <div className="banner" role="alert">
+              <p>{error.message}</p>
+              {error.permission && page !== "general" && (
+                <button type="button" className="button" onClick={() => setPage("general")}>
+                  Open General
                 </button>
-              </div>
-            )}
-            {update && (
-              <div className="banner update" role="status">
-                <p>Rec {update.version} is available.</p>
-                <button type="button" className="button primary" disabled={updating} onClick={installUpdate}>
-                  {updating ? "Updating…" : "Restart to update"}
-                </button>
-              </div>
-            )}
+              )}
+              <button type="button" className="button" onClick={() => setError(null)}>
+                Dismiss
+              </button>
+            </div>
           </div>
         )}
         {page === "general" && <General info={info} onInfo={setInfo} onToast={showToast} />}

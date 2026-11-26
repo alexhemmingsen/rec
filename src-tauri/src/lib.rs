@@ -117,7 +117,6 @@ pub fn run() {
 
             let show_window =
                 !std::env::args().any(|a| a == HIDDEN_ARG) || !settings.onboarding_complete;
-            let check_updates = settings.check_for_updates;
 
             app.manage(AppState {
                 settings: Mutex::new(settings),
@@ -152,12 +151,24 @@ pub fn run() {
             if show_window {
                 windowing::show_main(&handle);
             }
-            if check_updates {
-                let h = handle.clone();
-                tauri::async_runtime::spawn(async move {
-                    let _ = updater::check(&h).await;
-                });
-            }
+            // At launch, then every few hours: Rec usually stays running for
+            // days (it opens at login, and closing the window doesn't quit
+            // it). Each time it follows the current "check for updates".
+            let h = handle.clone();
+            std::thread::spawn(move || {
+                loop {
+                    let enabled = h
+                        .state::<AppState>()
+                        .settings
+                        .lock()
+                        .unwrap()
+                        .check_for_updates;
+                    if enabled {
+                        let _ = tauri::async_runtime::block_on(updater::check(&h));
+                    }
+                    std::thread::sleep(updater::CHECK_EVERY);
+                }
+            });
             Ok(())
         })
         .on_window_event(|window, event| {

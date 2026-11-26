@@ -447,11 +447,38 @@ p {
   display: flex;
   flex-direction: column;
 }
-/* "Version 0.3.0" at the bottom of the sidebar. */
+/* The bottom of the sidebar: a new version, when there is one, above
+   "Version 0.3.0". */
 .sidebar-foot {
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* White with the same edge as the selected sidebar item. */
+.sidebar-update {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background:
+    linear-gradient(var(--d-bg), var(--d-bg)) padding-box,
+    var(--d-stroke) border-box;
+  color: var(--d-text);
+  font-size: 13px;
+}
+.sidebar-update p {
+  margin: 0;
+}
+.sidebar-update .button {
+  width: 100%;
+  justify-content: center;
+}
+.sidebar-version {
   padding: 0 16px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--d-muted);
 }
 .nav-item {
@@ -517,9 +544,6 @@ p {
   border: 1px solid var(--d-hairline);
   border-radius: 8px;
   background: var(--warn-soft);
-}
-.banner.update {
-  background: var(--ok-soft);
 }
 .banner p {
   flex: 1;

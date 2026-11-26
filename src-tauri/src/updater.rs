@@ -7,6 +7,9 @@ use tauri_plugin_updater::UpdaterExt;
 
 use crate::recorder::AppState;
 
+/// How often a running Rec checks for a new version (it also checks at launch).
+pub const CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
