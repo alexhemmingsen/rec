@@ -78,10 +78,21 @@ Run the full build and test suite before every commit.
 - AppKit calls must run on the main thread: use `app.run_on_main_thread`.
 - H.264 needs even dimensions and at most 4096×2304 pixels; see
   `output_dimensions`.
-- Signing keys live outside the repo (`~/.tauri/`) and in GitHub secrets
-  (`REC_SIGN_P12_BASE64`, `REC_SIGN_P12_PASSWORD`, `TAURI_SIGNING_PRIVATE_KEY`).
-  Never commit them. Every release must be signed with the same certificate,
-  or users lose the Screen Recording permission on update.
+- Signing keys live outside the repo, in `~/.tauri/`:
+  - `rec-developer-id/`: the Apple Developer ID (`.p12` + `p12-password.txt`)
+    and the App Store Connect key for notarization (`AuthKey_*.p8`,
+    `notary.json`).
+  - `rec-codesign/`: the old self-signed certificate (0.1.0 and 0.2.0).
+  - `rec-updater.key`: the updater key.
+
+  The same keys are in GitHub secrets: `REC_SIGN_P12_BASE64`,
+  `REC_SIGN_P12_PASSWORD`, `REC_NOTARY_API_KEY_JSON` and
+  `TAURI_SIGNING_PRIVATE_KEY`. Never commit them.
+
+  Releases are signed with the Developer ID of team 648JZG624Q. macOS ties
+  the Screen Recording permission to that team, so a renewed certificate is
+  fine. Signing with another team or certificate makes users grant the
+  permission again.
 - To release: bump the version in `src-tauri/tauri.conf.json`, the root
   `Cargo.toml` (`[workspace.package]`) and `package.json`, then push a
   `vX.Y.Z` tag.

@@ -171,6 +171,16 @@ jobs:
           merge-multiple: true
       - name: Updater manifest
         run: node scripts/latest-json.mjs dist "${{ needs.version.outputs.version }}" "${{ github.repository }}"
+      # Copies with names that never change, so a website can link to
+      # https://github.com/<repo>/releases/latest/download/Rec-macOS.dmg and
+      # always get the newest release. After the manifest: they have no .sig,
+      # and the updater keeps using the versioned files.
+      - name: Fixed-name downloads
+        run: |
+          cp dist/Rec_*_aarch64.dmg dist/Rec-macOS.dmg
+          cp dist/Rec_*_x64-setup.exe dist/Rec-Windows-setup.exe
+          cp dist/Rec_*_amd64.AppImage dist/Rec-Linux.AppImage
+          cp dist/Rec_*_amd64.deb dist/Rec-Linux.deb
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

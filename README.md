@@ -29,7 +29,7 @@ Get the latest version from [Releases](https://github.com/alexhemmingsen/rec/rel
 
 | Platform | File | Notes |
 | --- | --- | --- |
-| macOS 14+ (Apple Silicon) | `Rec_<version>_aarch64.dmg` | Not notarized by Apple yet: the first time, macOS says it "could not verify" the app. Open **System Settings → Privacy & Security** and click **Open Anyway**. Once only. |
+| macOS 14+ (Apple Silicon) | `Rec_<version>_aarch64.dmg` | Signed and notarized by Apple: open the DMG and drag Rec to Applications. |
 | Windows 10 (2004+) / 11 (x64) | `Rec_<version>_x64-setup.exe` | The installer isn't code-signed yet: if SmartScreen warns, click **More info → Run anyway**. |
 | Linux (x64) | `Rec_<version>_amd64.deb` or `.AppImage` | See [Linux notes](#linux-notes). |
 

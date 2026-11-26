@@ -54,7 +54,11 @@ cp -R "$APP" "$OUT/dmg/"
 ln -s /Applications "$OUT/dmg/Applications"
 hdiutil create -quiet -volname "Rec" -srcfolder "$OUT/dmg" -ov -format UDZO "$OUT/Rec_${VERSION}_aarch64.dmg"
 if [[ -n "$NOTARIZE" ]]; then
-  echo "==> Notarizing the DMG"
+  # Stapling the ticket to a DMG needs the DMG itself signed. Only with the
+  # Developer ID: the self-signed certificate isn't trusted, so signing the
+  # DMG with it gains nothing.
+  echo "==> Signing and notarizing the DMG"
+  "$RCODESIGN" sign --p12-file "$REC_SIGN_P12" --p12-password "${REC_SIGN_P12_PASSWORD:-}" "$OUT/Rec_${VERSION}_aarch64.dmg"
   "$RCODESIGN" notary-submit --api-key-file "$REC_NOTARY_API_KEY" --staple "$OUT/Rec_${VERSION}_aarch64.dmg"
 fi
 
