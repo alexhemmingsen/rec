@@ -212,13 +212,13 @@ pub fn permission_status() -> &'static str {
     permission_name()
 }
 
-/// "Grant access" for Screen Recording does one thing per click: the first
-/// time it asks macOS (whose dialog adds Rec to the list in System Settings);
-/// after that macOS won't ask again, so it opens System Settings instead.
+/// "Grant access" for Screen Recording, one thing at a time (see `tcc`): if
+/// Rec isn't in the list, macOS's own prompt, which adds it (its "Open
+/// System Settings" goes there); if it is, System Settings at the list.
 #[tauri::command]
 pub fn request_screen_permission(app: AppHandle) -> &'static str {
     if rec_capture::permission_status() == rec_capture::Permission::NotGranted {
-        if first_ask(&app, |s| &mut s.asked_screen_recording) {
+        if prompt_adds_rec(&app, ListKind::ScreenRecording) {
             rec_capture::request_permission();
         } else {
             open_permission_settings(app);
@@ -227,22 +227,42 @@ pub fn request_screen_permission(app: AppHandle) -> &'static str {
     permission_name()
 }
 
-/// True, and remembered, the first time Rec asks for a permission.
-pub fn first_ask(
-    app: &AppHandle,
-    flag: impl FnOnce(&mut crate::settings::Settings) -> &mut bool,
-) -> bool {
-    let state = app.state::<AppState>();
-    let mut settings = state.settings.lock().unwrap();
-    let asked = flag(&mut settings);
-    if *asked {
-        return false;
+#[derive(Clone, Copy, Debug)]
+enum ListKind {
+    ScreenRecording,
+    Accessibility,
+}
+
+/// Whether "Grant access" should show macOS's prompt (Rec isn't in the
+/// list) rather than open System Settings (it is). When macOS won't say,
+/// both: the prompt adds Rec if it's missing and does nothing otherwise.
+fn prompt_adds_rec(app: &AppHandle, kind: ListKind) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use crate::tcc::{List, Listing, listing};
+        let list = match kind {
+            ListKind::ScreenRecording => List::ScreenRecording,
+            ListKind::Accessibility => List::Accessibility,
+        };
+        let listed = listing(list);
+        log::info!("grant access for {kind:?}: Rec in the list: {listed:?}");
+        match listed {
+            Some(Listing::Missing) => true,
+            Some(Listing::On | Listing::Off) => false,
+            None => {
+                match kind {
+                    ListKind::ScreenRecording => open_permission_settings(app.clone()),
+                    ListKind::Accessibility => open_accessibility_settings(app.clone()),
+                }
+                true
+            }
+        }
     }
-    *asked = true;
-    if let Err(e) = settings.save(&state.settings_path) {
-        log::warn!("cannot save settings: {e}");
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, kind);
+        false
     }
-    true
 }
 
 #[tauri::command]
@@ -260,12 +280,12 @@ pub fn accessibility_status() -> &'static str {
     accessibility_name()
 }
 
-/// "Grant access" for Accessibility: asks macOS the first time, opens System
-/// Settings after that (see `request_screen_permission`).
+/// "Grant access" for Accessibility: the same as for Screen Recording (see
+/// `request_screen_permission`).
 #[tauri::command]
 pub fn request_accessibility(app: AppHandle) -> &'static str {
     if accessibility_name() == "notGranted" {
-        if first_ask(&app, |s| &mut s.asked_accessibility) {
+        if prompt_adds_rec(&app, ListKind::Accessibility) {
             #[cfg(target_os = "macos")]
             crate::mouse_tap::request_accessibility();
         } else {

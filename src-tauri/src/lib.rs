@@ -16,6 +16,8 @@ mod recorder;
 mod settings;
 mod shortcut;
 mod sound;
+#[cfg(target_os = "macos")]
+mod tcc;
 mod updater;
 mod windowing;
 

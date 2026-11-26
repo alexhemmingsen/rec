@@ -297,11 +297,9 @@ pub fn on_shortcut(app: &AppHandle) {
     if !matches!(*phase, Phase::Idle) {
         return;
     }
+    // Without permission: Rec's window says so, with its Grant access button.
     if rec_capture::permission_status() == Permission::NotGranted {
         drop(phase);
-        if crate::commands::first_ask(app, |s| &mut s.asked_screen_recording) {
-            rec_capture::request_permission();
-        }
         windowing::show_main(app);
         emit_error(app, &CaptureError::PermissionDenied);
         return;

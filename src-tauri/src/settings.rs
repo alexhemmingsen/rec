@@ -28,11 +28,6 @@ pub struct Settings {
     pub check_for_updates: bool,
     /// The first-run onboarding has been finished.
     pub onboarding_complete: bool,
-    /// Rec has asked macOS for Screen Recording. macOS shows its dialog only
-    /// once, so after that "Grant access" opens System Settings instead.
-    pub asked_screen_recording: bool,
-    /// The same, for Accessibility.
-    pub asked_accessibility: bool,
 }
 
 impl Default for Settings {
@@ -43,8 +38,6 @@ impl Default for Settings {
             save_dir: None,
             check_for_updates: true,
             onboarding_complete: false,
-            asked_screen_recording: false,
-            asked_accessibility: false,
         }
     }
 }
@@ -115,8 +108,6 @@ mod tests {
             save_dir: Some(PathBuf::from("/tmp/videos")),
             check_for_updates: false,
             onboarding_complete: true,
-            asked_screen_recording: true,
-            asked_accessibility: false,
         };
         s.save(&path).unwrap();
         assert_eq!(Settings::load(&path), s);

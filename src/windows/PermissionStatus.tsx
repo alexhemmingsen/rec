@@ -78,8 +78,8 @@ export function PermissionControl({
     );
   }
 
-  // One button: the first click asks macOS (its dialog), later clicks open
-  // System Settings (macOS asks only once). Rec remembers which applies.
+  // One button, one thing: macOS's own prompt if Rec isn't in the list in
+  // System Settings yet (it adds Rec there), else that list in System Settings.
   const restart = asked && k.restartAfterAsking;
   return (
     <div className="row-controls">
