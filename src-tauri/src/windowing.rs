@@ -333,6 +333,17 @@ pub fn ensure_canvas(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     }
 }
 
+/// Let clicks go through `window`. On Linux, tao panics doing that to a window
+/// that has never been shown (GTK hasn't made its GdkWindow yet), as the
+/// drawing window is until the pen is first used. A hidden window gets no
+/// clicks anyway, so there it's skipped.
+fn pass_clicks_through(window: &WebviewWindow) {
+    if cfg!(target_os = "linux") && !window.is_visible().unwrap_or(false) {
+        return;
+    }
+    let _ = window.set_ignore_cursor_events(true);
+}
+
 fn canvas_level() -> isize {
     #[cfg(target_os = "macos")]
     return crate::macos::PILL_LEVEL - 1;
@@ -359,7 +370,7 @@ pub fn show_canvas(app: &AppHandle, display: &DisplayInfo, region_global: Rect) 
         canvas_level(),
     );
     PEN_ON.store(false, Ordering::SeqCst);
-    let _ = canvas.set_ignore_cursor_events(true);
+    pass_clicks_through(&canvas);
     let _ = app.emit_to(CANVAS, "canvas-reset", ());
     // Linux shows it only once the pen is used: a see-through window needs a
     // compositor, and without one it would cover the recording.
@@ -383,7 +394,7 @@ pub fn hide_canvas(app: &AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(80));
         if let Some(w) = app.get_webview_window(CANVAS) {
-            let _ = w.set_ignore_cursor_events(true);
+            pass_clicks_through(&w);
             let _ = w.hide();
         }
     });
@@ -403,7 +414,11 @@ pub fn set_pen(app: &AppHandle, on: bool) {
     PEN_ON.store(on, Ordering::SeqCst);
     match app.get_webview_window(CANVAS) {
         Some(canvas) => {
-            let _ = canvas.set_ignore_cursor_events(!on);
+            if on {
+                let _ = canvas.set_ignore_cursor_events(false);
+            } else {
+                pass_clicks_through(&canvas);
+            }
             if on && cfg!(target_os = "linux") {
                 let _ = canvas.show();
             }
