@@ -178,6 +178,14 @@ let (shortcutKey, shortcutFlags): (CGKeyCode, CGEventFlags) = {
 }()
 func pressShortcut() { key(shortcutKey, shortcutFlags) }
 
+func quitRec() {
+    let quit = Process()
+    quit.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    quit.arguments = ["-e", "tell application id \"com.alexhem.rec\" to quit"]
+    try? quit.run()
+    quit.waitUntilExit()
+}
+
 let display = CGDisplayBounds(CGMainDisplayID())
 let mode = CGDisplayCopyDisplayMode(CGMainDisplayID())!
 let scale = Double(mode.pixelWidth) / Double(display.width)
@@ -264,6 +272,15 @@ check(recWindows().contains { $0.onscreen && $0.layer == 0 && $0.bounds.width >=
 pause(0.5)
 key(53) // Esc
 waitFor("Esc to cancel the selection", timeout: 5) { !overlayVisible() }
+
+// REC_E2E_KEYBOARD_ONLY=1 (CI): stop here. GitHub's macOS VMs drop the
+// mouse on its way to Rec (drags and clicks alike), so the steps below fail
+// there whatever Rec does; scripts/e2e-mac.sh runs them on a real Mac.
+if ProcessInfo.processInfo.environment["REC_E2E_KEYBOARD_ONLY"] == "1" {
+    quitRec()
+    log("PASS (keyboard steps; the mouse steps run on a real Mac: scripts/e2e-mac.sh)")
+    exit(0)
+}
 
 // 3: record a region.
 NSPasteboard.general.clearContents()
@@ -385,9 +402,5 @@ let historyFile = FileManager.default.homeDirectoryForCurrentUser
 let history = (try? String(contentsOf: historyFile, encoding: .utf8)) ?? ""
 check(history.contains(path1) && history.contains(path2), "History lists both recordings")
 
-let quit = Process()
-quit.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-quit.arguments = ["-e", "tell application id \"com.alexhem.rec\" to quit"]
-try? quit.run()
-quit.waitUntilExit()
+quitRec()
 log("PASS")

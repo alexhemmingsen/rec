@@ -64,7 +64,9 @@ Run the full build and test suite before every commit.
 - Pushes run only the quick CI (`.github/workflows/ci.yml`). The live
   capture and end-to-end tests on all three platforms
   (`.github/workflows/e2e.yml`) run on demand: `gh workflow run e2e.yml`.
-  Run them before a release.
+  Run them before a release. GitHub's macOS VMs drop the mouse on its way
+  to Rec, so there CI runs only the keyboard steps; before a release, also
+  run `./scripts/e2e-mac.sh` on a real Mac for the rest.
 - Release only when asked: push a `vX.Y.Z` tag.
 
 ## Gotchas
