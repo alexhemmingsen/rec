@@ -62,21 +62,8 @@ any other agent. The agent reads the video with ffmpeg or any tool it likes.
   Wayland's limits get handled when Linux comes up.
 - Signing: a free self-made certificate while building (it keeps the Screen
   Recording permission across updates), and an Apple Developer ID before the
-  public launch: the owner's own (Alexander Hemmingsen, team 648JZG624Q), not
-  a company's. Windows signing is decided at the Windows release.
+  public launch: the owner's own, not a company's. Windows signing is decided
+  at the Windows release.
 - Name: **Rec**, bundle ID `com.alexhem.rec`. Downloads come from GitHub
-  Releases. No App Store. The website (rec.alexhem.com) is parked for later.
-
-## Status
-
-| Area | Status |
-| --- | --- |
-| Recording flow, app, onboarding, History | Done on macOS, Windows and Linux |
-| Capture | macOS: ScreenCaptureKit + AVFoundation. Windows: Windows Graphics Capture + Media Foundation. Linux: GStreamer (X11 directly; Wayland through the ScreenCast portal) |
-| End-to-end tests | CI drives the real app on Windows and Linux; on macOS CI covers shortcut, overlay, Esc and live capture (its VMs drop scripted drags), and the full flow was verified on a real Mac (2026-11-25) |
-| Update check and in-app update | Done (GitHub Releases, signed updater artifacts for all three platforms) |
-| Signing while building (free, self-made) | Done, and replaced: 0.1.0 and 0.2.0 were signed with Rec's self-signed certificate |
-| Apple Developer ID + notarization | Done from the release after 0.2.0 (set up 2026-11-26): `scripts/release-macos.sh` signs with the Developer ID (hardened runtime), notarizes and staples both Rec.app and the DMG. macOS ties Screen Recording to the team ID, so it survives updates and certificate renewals; people on 0.1.0/0.2.0 grant it once more |
-| Windows code signing | Decided: unsigned until a certificate is bought (SmartScreen warns once; documented). The release signs automatically once `REC_WINDOWS_PFX_BASE64` / `REC_WINDOWS_PFX_PASSWORD` are set |
-| Stop pill out of full-screen recordings | macOS and Windows: the OS leaves Rec's windows out of the capture. Linux (no per-window exclusion): Rec covers the pill's area with what was there when recording started |
-| Website | Parked |
+  Releases. No App Store. The website, alexhem.com/rec, links to the newest
+  release's `Rec-macOS.dmg`, so it never needs changing for a release.

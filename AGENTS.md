@@ -89,10 +89,10 @@ Run the full build and test suite before every commit.
   `REC_SIGN_P12_PASSWORD`, `REC_NOTARY_API_KEY_JSON` and
   `TAURI_SIGNING_PRIVATE_KEY`. Never commit them.
 
-  Releases are signed with the Developer ID of team 648JZG624Q. macOS ties
-  the Screen Recording permission to that team, so a renewed certificate is
-  fine. Signing with another team or certificate makes users grant the
-  permission again.
+  Releases are signed with Rec's Apple Developer ID. macOS ties the Screen
+  Recording permission to its team, so a renewed certificate is fine.
+  Signing with another team's certificate makes users grant the permission
+  again.
 - To release: bump the version in `src-tauri/tauri.conf.json`, the root
   `Cargo.toml` (`[workspace.package]`) and `package.json`, then push a
   `vX.Y.Z` tag.
